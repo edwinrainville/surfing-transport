@@ -160,8 +160,8 @@ cython_debug/
 #.idea/
 
 # Ignore the data directory
-./data/
+./data/*
 
 # Ignore some of the figures
-./figures/
+./figures/*
 
