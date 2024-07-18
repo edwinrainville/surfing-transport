@@ -1,6 +1,4 @@
 import cftime
-from datetime import timedelta
-from datetime import datetime
 import glob
 import netCDF4 as nc
 import numpy as np
@@ -9,14 +7,36 @@ import os
 import pandas as pd
 from scipy import interpolate
 from scipy import signal
+from sklearn.linear_model import LinearRegression
 
-def extract_jump_inds(jump_inds, consecutive_values=1):
+def combine_events(list_of_lists, wave_period):
+    combined_lists = [list_of_lists[0]]
+    i = 1
+    n = 0
+    while i < len(list_of_lists):
+        first_list = combined_lists[n]
+        second_list = list_of_lists[i]
+        if abs(first_list[-1] - second_list[0]) < wave_period:
+            combined_lists[n] = np.concatenate([first_list, second_list])
+            i += 1  # Move to the next pair of lists
+        else:
+            combined_lists.append(second_list)
+            i += 1  # Index up to next list in the original list
+            n += 1  # Index up to the next list in the combined lists
+
+    # Add the last list if it's not combined
+    if i == len(list_of_lists) - 1:
+        combined_lists.append(list_of_lists[-1])
+    return combined_lists
+
+def extract_jump_inds(jump_inds, wave_period, delta_t=1/12):
     """
     
     """
     event_inds = np.where(jump_inds == 1)[0]
-    event_groups = np.split(event_inds, np.where(np.diff(event_inds) != consecutive_values)[0]+1)
-    return event_groups
+    event_groups = np.split(event_inds, np.where(np.diff(event_inds) != 1)[0]+1)
+    event_groups_combined = combine_events(event_groups, int(wave_period/delta_t))
+    return event_groups_combined
 
 def bathy_along_track(bathy_file:str, xFRF:np.ndarray, yFRF:np.ndarray,
                       single_trajectory=False):
@@ -64,7 +84,7 @@ def bathy_along_track(bathy_file:str, xFRF:np.ndarray, yFRF:np.ndarray,
 
     return np.array(bathy_along_track)
 
-def main():
+def main(speed_threshold=0.7, plot_jumps=True, filter_on=True):
     # Load the mission Dataframe and plot against other characteristics
     mission_df = pd.read_csv('./data/mission_df.csv').sort_values(by=['mission number'])
 
@@ -110,6 +130,7 @@ def main():
         time = cftime.num2pydate(mission_dataset['time'],
                                     units=mission_dataset['time'].units,
                                     calendar=mission_dataset['time'].calendar)
+        delta_t = (time[1]-time[0]).total_seconds()
 
         # Get the mission number from the mission file
         mission_num = int(mission_nc[15:-3])
@@ -117,10 +138,10 @@ def main():
 
         # Extract the mission specific data from the mission dataframe of measurements from the 8 m array
         water_level = mission_df[mission_df['mission number'] == mission_num]['water level [m]'].values[0]
-        L_sz = mission_df[mission_df['mission number'] == mission_num]['cross shore gamma location [m]'].values[0]
-        wavelength = mission_df[mission_df['mission number'] == mission_num]['wavelength [m]'].values[0]
-        period = mission_df[mission_df['mission number'] == mission_num]['Tm [s]'].values[0]
-        hs = mission_df[mission_df['mission number'] == mission_num]['Hs [m]'].values[0]
+        L_sz = mission_df[mission_df['mission number'] == mission_num]['surf zone width [m]'].values[0]
+        wavelength = mission_df[mission_df['mission number'] == mission_num]['Mean Wavelength [m] (8marray)'].values[0]
+        period = mission_df[mission_df['mission number'] == mission_num]['Tm [s] (8marray)'].values[0]
+        hs = mission_df[mission_df['mission number'] == mission_num]['Hs [m] (8marray)'].values[0]
         breaking_iribarren = mission_df[mission_df['mission number'] == mission_num]['breaking iribarren'].values[0]
 
         # Initialize values 
@@ -139,15 +160,25 @@ def main():
         jump_speed_each_mission = []
 
         for trajectory_num in np.arange(number_of_trajectories):
+            # Compute distance along the track 
+            x_dist = np.ma.filled(x_locations[trajectory_num,0] - x_locations[trajectory_num,:], np.NaN)
+            y_dist = np.ma.filled(y_locations[trajectory_num,0] - y_locations[trajectory_num,:], np.NaN)
+
+            # Compute Cross Shore Distance Traveled
+            dist_traveled = np.sqrt(x_dist**2 + y_dist**2)
 
             # Compute Cross Shore Velocity from Cross Shore Position
-            cross_shore_vel = np.gradient((x_locations[trajectory_num,0] - x_locations[trajectory_num,:]), 1/12)
-            cross_shore_vel = np.ma.filled(cross_shore_vel, np.NaN)
-            cross_shore_vel_nonans = cross_shore_vel.copy()
-            cross_shore_vel_nonans[np.isnan(cross_shore_vel)] = 0
-            sos = signal.butter(1, 0.5, 'lowpass', fs=12, output='sos')
-            cross_shore_vel_filtered = signal.sosfiltfilt(sos, cross_shore_vel_nonans)
-            cross_shore_vel_filtered[np.isnan(cross_shore_vel)] = np.NaN
+            instantaneous_vel = np.gradient(dist_traveled, delta_t)
+
+            if filter_on is True:
+                instantaneous_vel = np.gradient(dist_traveled, delta_t)
+                instantaneous_vel = np.ma.filled(instantaneous_vel, np.NaN)
+                instantaneous_vel_nonans = instantaneous_vel.copy()
+                instantaneous_vel_nonans[np.isnan(instantaneous_vel)] = 0
+                sos = signal.butter(1, 0.5, 'lowpass', fs=12, output='sos')
+                instantaneous_vel_filtered = signal.sosfiltfilt(sos, instantaneous_vel_nonans)
+                instantaneous_vel_filtered[np.isnan(instantaneous_vel)] = np.NaN
+                instantaneous_vel = instantaneous_vel_filtered.copy()
 
             # Depth Along Trajectory
             trajectory_bathy = bathy_along_track(bathy_file='./data/FRF_geomorphology_DEMs_surveyDEM_20211021.nc', 
@@ -160,42 +191,43 @@ def main():
             phase_speed_along_track = np.sqrt(np.abs(trajectory_depth * 9.8))
 
             # Find all times that the cross shore velocity is higher than the threshold
-            jump_threshold = phase_speed_along_track * 0.3  # 0.3 is based on Eeltink et al 2023 jump identification algorithm
-            jump_times = np.zeros(cross_shore_vel_filtered.size)
-            jump_inds = np.where(cross_shore_vel_filtered > jump_threshold)
-            jump_times[jump_inds] = 1
-
-            # Compute Cross Shore Distance Traveled
-            dist_traveled = x_locations[trajectory_num,0] - x_locations[trajectory_num,:]
+            jump_threshold = phase_speed_along_track * speed_threshold
+            jump_times = np.heaviside((instantaneous_vel - jump_threshold), 1)
+            jump_times[np.isnan(jump_times)] = 0
 
             # Get the jump Indices
-            jump_event_inds = extract_jump_inds(jump_times, consecutive_values=1)
+            jump_event_inds = extract_jump_inds(jump_times, wave_period=period, delta_t=delta_t)
 
             event_num = 1
-            for event in jump_event_inds:
-                if event.size > 0:
+            for event in jump_event_inds[1:]:
+                # Compute jump amplitude and jump time
+                jump_amp = dist_traveled[event[-1]] - dist_traveled[event[0]]
+                jump_time = (time[event[-1]] - time[event[0]]).total_seconds()
+                jump_speed = jump_amp/jump_time
+
+                # Check percent of nans in the jump to avoid errors
+                fraction_nan = np.count_nonzero(np.isnan(dist_traveled[event[0:-1]]))/event.size
+                jump_size = event.size
+
+                if (jump_amp > 0) and (jump_time > 0) and (fraction_nan < 0.2) and (jump_size > 2) and (jump_speed < 20):
                     jump_depth = np.abs(trajectory_depth[event[0]])
                     c = np.sqrt(9.8 * jump_depth)
-                    jump_amp = dist_traveled[event[-1]] - dist_traveled[event[0]]
-                    jump_time = (time[event[-1]] - time[event[0]]).total_seconds()
-                    jump_speed = jump_amp/jump_time
+                    jump_amps_each_mission.append(jump_amp)
+                    jump_depth_each_mission.append(jump_depth)
+                    c_at_jump_depth.append(c)    
+                    jump_speed_each_mission.append(jump_speed)                                                        
+                    jump_amps_each_mission_normalized_wavelength.append(jump_amp/wavelength)
+                    jump_seconds_each_mission.append(jump_time)
+                    jump_seconds_each_mission_normalized_period.append(jump_time/period)
+                    mission_number_for_event.append(mission_num)
+                    trajectory_number_for_event.append(trajectory_num)
+                    jump_x_location_each_mission_normalized.append(x_locations[trajectory_num, event[0]]/(L_sz))
+                    breaking_iribarren_each_mission.append(breaking_iribarren)
+                    mission_num_each_jump.append(mission_num)
+                    mission_hs_each_jump.append(hs)
+                    mission_tm_each_jump.append(period)
 
-                    if (jump_speed > (c - 0.2*c)) and (jump_speed < (c + 0.2*c)):
-                        jump_amps_each_mission.append(jump_amp)
-                        jump_depth_each_mission.append(jump_depth)
-                        c_at_jump_depth.append(c)    
-                        jump_speed_each_mission.append(jump_speed)                                                        
-                        jump_amps_each_mission_normalized_wavelength.append(jump_amp/wavelength)
-                        jump_seconds_each_mission.append(jump_time)
-                        jump_seconds_each_mission_normalized_period.append(jump_time/period)
-                        mission_number_for_event.append(mission_num)
-                        trajectory_number_for_event.append(trajectory_num)
-                        jump_x_location_each_mission_normalized.append(x_locations[trajectory_num, event[0]]/(L_sz-75)) # the -75 accounts for the beach to actually just define the surf zone width 
-                        breaking_iribarren_each_mission.append(breaking_iribarren)
-                        mission_num_each_jump.append(mission_num)
-                        mission_hs_each_jump.append(hs)
-                        mission_tm_each_jump.append(period)
-
+                    if plot_jumps is True:
                         # Plot the jump event and save to the jump events directory
                         fig, ax = plt.subplots()
                         plot_start_ind = event[0] - 300
@@ -204,22 +236,18 @@ def main():
                         time_for_speed = (time[event[-1]] - time[event[0]]).total_seconds()
                         ax.scatter(time[event[0]], dist_traveled[event[0]], label='Start of Jump Detected', color='g')
                         ax.scatter(time[event[-1]], dist_traveled[event[-1]], label='End of Jump Detected', color='r')
-                        ax.plot(time[event[0]:event[-1]], c*np.linspace(0, time_for_speed, num=len(event)-1)+dist_traveled[event[0]], 
+                        ax.plot(time[event[0]:event[-1]], c*np.linspace(0, time_for_speed, num=time[event[0]:event[-1]].size)+dist_traveled[event[0]], 
                                 label=f'Linear Phase Speed, c = {np.round(c, 2)} m/s')
                         ax.plot([time[event[0]], time[event[-1]]], [dist_traveled[event[0]], dist_traveled[event[-1]]], 
                                 label=f'Bulk Jump Speed = {np.round(jump_speed, 2)} m/s')
                         ax.legend()
                         ax.set_xlabel('Time [UTC]')
-                        ax.set_ylabel('Cross shore displacement from initial position [m]')
+                        ax.set_ylabel('Displacement from Initial Position [m]')
                         fig.savefig(f'./figures/jump-events/mission {mission_num} - trajectory {trajectory_num} - jump {event_num}.png')
                         plt.close()
 
-                        # Increase the event number index
-                        event_num += 1
-
-                    else:
-                        pass
-
+                    # Increase the event number index
+                    event_num += 1
 
         # save each mission
         jump_amps_all_missions.append(jump_amps_each_mission)
@@ -266,9 +294,16 @@ def main():
     jump_df['Offshore Tm [s]'] = mission_tm_all_missions_flat
     jump_df['linear phase speed at jump depth [m/s]'] = c_at_jump_depth_all_missions_flat
     jump_df['jump speed [m/s]'] = jump_speed_all_missions_flat
-    jump_df.to_csv('./data/jump_df.csv')
+    jump_df.to_csv(f'./data/jump_df_threshold{speed_threshold}.csv')
 
-    return
+    # Compute regression for the jump speeds
+    # mask the nans for the regression - nans occur in the phase speed at depth values since the buoys may be off the bathymetry
+    mask = ~np.isnan(c_at_jump_depth_all_missions_flat) & ~np.isnan(jump_speed_all_missions_flat)
+    regressor = LinearRegression()
+    regressor.fit(c_at_jump_depth_all_missions_flat[mask].reshape(-1, 1), jump_speed_all_missions_flat[mask].reshape(-1, 1))
+
+    return jump_seconds_all_mission_normalized_period_flat, jumps_amps_all_missions_normalized_wavelength_flat, \
+           regressor.coef_, jump_seconds_all_mission_normalized_period_flat.size
 
 if __name__ == "__main__":
     main()
