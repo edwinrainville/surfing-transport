@@ -158,11 +158,19 @@ def window_mean(arr, window_size):
 def gaussian(x, amplitude, mean, stddev):
     return amplitude * np.exp(-((x - mean) ** 2) / (2 * stddev ** 2))
 
-class figureEventHandler:
+class manualEventClicker:
     """Class to update value inside event handler """
     def __init__(self):
         self.keep_event = True
 
+    def update_keep_event(self, event):
+        print('press', event.key)
+        if event.key == 'enter':
+            event.keep_event = 'good'
+            plt.close()
+        if event.key == 'escape':
+            event.keep_event = 'bad'
+            plt.close()
 
 def main(speed_threshold=0.5, window_size=36, plot_jumps=True, manual_check=True):
     # Set the working directory
@@ -250,7 +258,6 @@ def main(speed_threshold=0.5, window_size=36, plot_jumps=True, manual_check=True
         jump_speed_median_each_mission = []
         jump_speed_max_each_mission = []
 
-
         for trajectory_num in np.arange(number_of_trajectories):
             # Compute distance along the track 
             x = np.ma.filled(x_locations[trajectory_num,:], np.NaN)
@@ -308,21 +315,17 @@ def main(speed_threshold=0.5, window_size=36, plot_jumps=True, manual_check=True
 
                     if manual_check is True:
                         plot_jumps = True
+                        keep_jump = manualEventClicker()
+                        keep_jump.keep_event = 'g'
                     
                     if manual_check is False:
-                        keep_event = 'g'
-                    
-                    # Function to close the figure and determine if 
-                    def keep_event_click(event):
-                        plt.close()
-
-                        if event
-                        return 
+                        keep_jump = manualEventClicker()
+                        keep_jump.keep_event = 'g'
 
                     if plot_jumps is True:
                         # Plot the jump event and save to the jump events directory
                         fig, (ax1, ax2) = plt.subplots(nrows=2, figsize=(10,8))
-                        fig.canvas.mpl_connect('key_press_event', close_figure)
+                        fig.canvas.mpl_connect('key_press_event', keep_jump.update_keep_event)
                         plot_start_ind = peak_vel_indices[n] - 300
                         plot_end_ind = peak_vel_indices[n] + 300
                         # Plot the position
@@ -347,19 +350,16 @@ def main(speed_threshold=0.5, window_size=36, plot_jumps=True, manual_check=True
                         ax2.set_ylabel('Instantaneous Cross Shore Velocity [m/s]')
                         plt.show()
 
-                        # Get input on whether or not to keep the event
-                        keep_event = input('Good or Bad Event (enter g for good, b for bad):')
-
-                        if keep_event == 'g':
+                        if keep_jump.keep_event == 'good':
                             fig.savefig(f'./figures/jump-events/good_events/mission {mission_num} - trajectory {trajectory_num} - jump {event_num}.png')
                             plt.close()
 
-                        if keep_event == 'b':
+                        if keep_jump.keep_event == 'bad':
                             fig.savefig(f'./figures/jump-events/bad_events/mission {mission_num} - trajectory {trajectory_num} - jump {event_num}.png')
                             plt.close()
 
                     if (jump_amp > 0) and (jump_time > 0) and (fraction_nan < 0.2) and (jump_size > 2) \
-                    and (jump_speed_bulk < 20) and (keep_event == 'g'):
+                    and (jump_speed_bulk < 20) and (keep_jump.keep_event == 'good'):
                         # Save jump speeds values
                         jump_speed_bulk_each_mission.append(jump_speed_bulk)
                         jump_speed_mean_each_mission.append(np.abs(np.nanmean(instantaneous_x_vel[start_point:end_point])))
@@ -384,7 +384,9 @@ def main(speed_threshold=0.5, window_size=36, plot_jumps=True, manual_check=True
 
                         # Increase the event number index
                         event_num += 1
-                except:
+
+                except Exception as e: 
+                    print(e)
                     print(f'Problem in last jump, event number {event_num}')
                     continue
 
