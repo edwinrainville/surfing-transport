@@ -10,7 +10,7 @@ def main():
     """
     Runs a sensitivity analysis for the surfing event extraction algorithm for the speed threshold that is chosen. 
     """
-    speed_thresholds = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1] 
+    speed_thresholds = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
 
     # Set the working directory
     os.chdir('/Users/ejrainville/projects/surfing-transport/')
@@ -55,30 +55,30 @@ def main():
         number_of_jumps.append(df.shape[0])
 
     # Plot the sensitivity study
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(ncols=2, nrows=2, figsize=(10,8))
+    fig, ((ax1, ax2, ax3)) = plt.subplots(ncols=3, figsize=(15,5))
     # Jump time sensitivity
     ax1.boxplot(normalized_jump_times, showfliers=False)
     ax1.set_xticks([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], speed_thresholds)
     ax1.set_xlabel('Fraction of Phase Speed for Speed Threshold')
     ax1.set_ylabel('Normalized Jump Time')
-    ax1.set_ylim(0, 5)
+    # ax1.set_ylim(0, 5)
     
     # Jump amp sensitivity
     ax2.boxplot(normalized_jump_amps, showfliers=False)
     ax2.set_xticks([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], speed_thresholds)
     ax2.set_xlabel('Fraction of Phase Speed for Speed Threshold')
     ax2.set_ylabel('Normalized Jump Amplitude')
-    ax2.set_ylim(0, 1)
+    # ax2.set_ylim(0, 1)
 
-     # speed regression slope sensitivity
-    ax3.scatter(speed_thresholds, bulk_speed_regression_slopes, label='Bulk Speed of Jump')
-    ax3.scatter(speed_thresholds, mean_speed_regression_slopes, label='Mean Speed in Jump')
-    ax3.scatter(speed_thresholds, median_speed_regression_slopes, label='Median Speed in Jump')
-    ax3.set_xlabel('Fraction of Phase Speed for Speed Threshold')
-    ax3.set_ylabel('Slope of Linear Regression between \n Linear Phase Speed and Jump Speed')
-    ax3.set_xlim(0, 1.1)
-    ax3.set_ylim(0, 1.1)
-    ax3.legend()
+    #  # speed regression slope sensitivity
+    # ax3.scatter(speed_thresholds, bulk_speed_regression_slopes, label='Bulk Speed of Jump')
+    # ax3.scatter(speed_thresholds, mean_speed_regression_slopes, label='Mean Speed in Jump')
+    # ax3.scatter(speed_thresholds, median_speed_regression_slopes, label='Median Speed in Jump')
+    # ax3.set_xlabel('Fraction of Phase Speed for Speed Threshold')
+    # ax3.set_ylabel('Slope of Linear Regression between \n Linear Phase Speed and Jump Speed')
+    # ax3.set_xlim(0, 1.1)
+    # ax3.set_ylim(0, 1.1)
+    # ax3.legend()
 
     # # Mean Values of Jump times
     # ax3.scatter(speed_thresholds, median_normalized_jump_times, color='r')
@@ -91,23 +91,15 @@ def main():
     # ax_twin.set_ylim(0, 1.3)
 
     # number of jumps
-    ax4.scatter(speed_thresholds, number_of_jumps, color='k')
-    ax4.set_xlabel('Fraction of Phase Speed for Speed Threshold')
-    ax4.set_ylabel('Number of Jumps Detected')
-    ax4.set_xlim(0, 1.1)
-
-    # # Mean Values of Jump amps
-    # ax4.scatter(speed_thresholds, median_normalized_jump_amps, color='k')
-    # ax4.set_xlabel('Fraction of Phase Speed for Speed Threshold')
-    # ax4.set_ylabel('Median Normalized Jump Amplitude')
-
-   
-
-  
+    ax3.scatter(speed_thresholds, number_of_jumps, color='k')
+    ax3.set_xlabel('Fraction of Phase Speed for Speed Threshold')
+    ax3.set_ylabel('Number of Jumps Detected')
+    ax3.set_xlim(0, 1.1)
 
     fig.tight_layout()
-    fig.savefig(f'./figures/speed_threshold_sensitivity_test_peak_detection.png')
-    plt.close()
+    plt.show()
+    # fig.savefig(f'./figures/speed_threshold_sensitivity_test_peak_detection.png')
+    # plt.close()
 
     return
 

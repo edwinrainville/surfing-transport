@@ -94,6 +94,7 @@ def main():
     surf_zone_width_all = []
     iribarren_breaking_all = []
     surf_zone_edge_all = []
+    beach_edge_all = []
 
     # Water Conditons
     water_level_all = []
@@ -139,8 +140,8 @@ def main():
         tm_8marrayall.append(tm_8marray)
         mean_wave_dir = find_closest_value_in_file(mission_time, array_8m_waves_file, 'waveMeanDirection')
         mean_wave_dir_8marray_all.append(mean_wave_dir)
-        mean_wave_dir_frf_8marray_all.append(mean_wave_dir - 19)
-        mean_wave_dir_frf_mathconv_8marray_all.append((270 - mean_wave_dir) + 19)
+        mean_wave_dir_frf_8marray_all.append(71.8 - mean_wave_dir)
+        mean_wave_dir_frf_mathconv_8marray_all.append((71.8 - mean_wave_dir) + 180)
         mean_wavelength_8marray = wavelength(tm_8marray, 8)
         mean_wavelength_8marray_all.append(mean_wavelength_8marray )
 
@@ -165,13 +166,17 @@ def main():
        
         # Compute the breaking location based on gamma
         mission_break_depth = hs_8marray/ gamma
-        surf_zone_edge = np.interp(-mission_break_depth, np.flip(np.nanmean(bathy, axis=0)), np.flip(cross_shore_coords))
+        surf_zone_edge = np.interp(-mission_break_depth, np.flip(np.nanmean(bathy + water_level, axis=0)), np.flip(cross_shore_coords))
         surf_zone_edge_all.append(surf_zone_edge)
-        surf_zone_width_all.append(surf_zone_edge - 75) # -75 is because the coordinate system starts on the beach and this accounts for the approximate beach width.
+
+        beach_edge = np.interp(0, np.flip(np.nanmean(bathy + water_level, axis=0)), np.flip(cross_shore_coords))
+        beach_edge_all.append(beach_edge)
+        surf_zone_width_all.append(surf_zone_edge - beach_edge) # -75 is because the coordinate system starts on the beach and this accounts for the approximate beach width.
 
         # Compute Iribarren number
-        slope_avg_at_breaking = np.abs(np.interp(surf_zone_edge, cross_shore_coords, bathy_gradient))
-        iribarren_breaking = np.sqrt(gamma/(2*np.pi)) * (slope_avg_at_breaking / (hs_8marray / mean_wavelength_8marray))
+        slope_avg_at_breaking = 0.023 # Computed from average bathymetry profiles
+        # iribarren_breaking = np.sqrt(gamma/(2 * np.pi)) * slope_avg_at_breaking / (hs_8marray / mean_wavelength_8marray)
+        iribarren_breaking = slope_avg_at_breaking / np.sqrt(hs_8marray / mean_wavelength_8marray)
         iribarren_breaking_all.append(iribarren_breaking)
         
 
@@ -206,6 +211,7 @@ def main():
     mission_df['surf zone width [m]'] = surf_zone_width_all
     mission_df['breaking iribarren'] = iribarren_breaking_all
     mission_df['surf zone edge [m]'] = surf_zone_edge_all
+    mission_df['beach edge [m]'] = beach_edge_all
 
     # Save the dataframe
     mission_df.to_csv('./data/mission_df.csv')

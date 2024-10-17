@@ -1,71 +1,264 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
+from matplotlib.ticker import MaxNLocator
 
+def create_vertical_boxplots(x, y, bins=10, min=None, max=None, xlabel='Bin Center', ylabel='Y Values', percent_ylabel='Percent of Total Data'):
+    """
+    Creates a series of vertical boxplots for arrays of continuous x and y variables by binning the x variable,
+    and plots the percent of total data in each bin on a separate plot below the boxplots. Handles NaN values by excluding them.
+    The x-axis is numeric representing the bin centers, rounded to 3 decimal places.
+
+    Parameters:
+    - x: array-like, continuous numerical variable (x-axis)
+    - y: array-like, continuous numerical variable (y-axis)
+    - bins: int, the number of bins to create for the x variable
+    - xlabel: str, label for the x-axis of the boxplot
+    - ylabel: str, label for the y-axis of the boxplot
+    - percent_ylabel: str, label for the y-axis of the percentage plot
+
+    Returns:
+    - ax1: matplotlib Axes object, the axes with the boxplots
+    - ax2: matplotlib Axes object, the axes with the percentage plot
+    - counts: list, the number of data points in each bin
+    - bin_centers: array, the center of each bin
+    """
+    # Exclude NaN values
+    mask = ~np.isnan(x) & ~np.isnan(y)
+    x = x[mask]
+    y = y[mask]
+    
+    # Create a figure with two subplots
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
+
+    # Create bins
+    if min is None and max is None:
+        bin_edges = np.linspace(np.nanmin(x), np.nanmax(x), bins + 1)
+    else:
+        bin_edges = np.linspace(min, max, bins + 1)
+    binned_indices = np.digitize(x, bins=bin_edges)
+
+    # Calculate the bin centers
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+
+    # Prepare data for each bin and count the number of data points
+    data_to_plot = [y[binned_indices == i] for i in range(1, bins + 1)]
+    counts = [len(data) for data in data_to_plot]
+    total_points = len(x)
+    percentages = [count / total_points * 100 for count in counts]
+
+    # Calculate bin width
+    bin_width = np.diff(bin_edges)[0]  # Assumes equal bin widths
+
+    # Define outlier marker properties
+    flierprops = dict(marker='.', color='k', alpha=0.7, markersize=3, label='Outliers (> Q3 + 1.5*IQR)')
+
+    # Plot the boxplot
+    boxplot = ax1.boxplot(data_to_plot, positions=bin_centers, widths=0.25 * bin_width, vert=True, 
+                showfliers=True, flierprops=flierprops)
+    ax1.set_ylabel(ylabel)
+
+    # Extract unique outlier labels
+    unique_labels = set()
+    for line in boxplot['fliers']:
+        # Assuming the label for fliers is the same as the dataset they come from
+        label = line.get_label()
+        if label not in unique_labels:
+            unique_labels.add(label)
+            line.set_label(label)
+
+    # Plot the percentage data
+    ax2.plot(bin_centers, percentages, marker='o', color='orange', linestyle='-', label='Percent of Total Data')
+    ax2.fill_between(bin_centers, percentages, color='orange', alpha=0.3)  # Fill the area below the line
+    ax2.set_xlabel(xlabel)
+    ax2.set_ylabel(percent_ylabel)
+    
+    # Format x-axis labels to 3 decimal places
+    ax2.set_xticklabels([f'{label:.3f}' for label in bin_centers])
+    
+    plt.tight_layout()
+
+    return ax1, ax2, counts, bin_centers
+
+def binned_statistics(x, y, bins=10, statistic='median'):
+    """
+    Bins the x variable into specified intervals, calculates the specified statistic (mean or median)
+    of y values within each bin, and returns the statistic values, the bin centers, and the number
+    of data points in each bin.
+
+    Parameters:
+    - x: array-like, continuous numerical variable to bin
+    - y: array-like, continuous numerical variable for which the statistic is calculated within each bin
+    - bins: int, the number of bins to create for the x variable
+    - statistic: str, 'mean' or 'median' to specify which statistic to calculate
+
+    Returns:
+    - bin_centers: array, the center value of each bin
+    - statistics: array, the calculated statistic (mean or median) for y values within each bin
+    - counts: array, the number of data points in each bin
+    """
+    
+    # Validate the statistic parameter
+    if statistic not in ['mean', 'median']:
+        raise ValueError("Statistic must be 'mean' or 'median'.")
+
+    # Create bins
+    bin_edges = np.linspace(np.min(x), np.max(x), bins + 1)
+    binned_indices = np.digitize(x, bins=bin_edges)
+
+    # Calculate the bin centers
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+
+    # Calculate the specified statistic for each bin
+    if statistic == 'mean':
+        statistics = [np.mean(y[binned_indices == i]) for i in range(1, bins + 1)]
+    elif statistic == 'median':
+        statistics = [np.median(y[binned_indices == i]) for i in range(1, bins + 1)]
+    
+    # Count the number of data points for each bin
+    counts = [np.sum(binned_indices == i) for i in range(1, bins + 1)]
+
+    return bin_centers, statistics, counts
 def main():
     # Load the jump dataframe 
-    fname = './data/jump_df_threshold0.5.csv'
+    fname = './data/jump_df_threshold0.5_manually_checked.csv'
     jump_df = pd.read_csv(fname)
 
-    # # Scatter Plot of the 
+    print(f'Number of Jumps: {len(jump_df)}')
+
+    # # 2d Histogram of the Dimensional Jump Metrics
     # fig, ax = plt.subplots()
-    # # ax.hist2d(jump_df['jump time [s]'], jump_df['jump amplitude [m]'], bins=(500, 500), cmap=plt.cm.jet)
-    # ax.scatter(jump_df['jump time [s]'], jump_df['jump amplitude [m]'], s=1)
+    # _, _, _, im = ax.hist2d(jump_df['jump time [s]'], jump_df['jump amplitude [m]'], bins=(100, 100), cmap='inferno', cmin=2, density=False)
+    # cbar = fig.colorbar(im, ax=ax)
+    # cbar.set_label('Number of Jumps [-]')
+    # ax.axvline(np.median(jump_df['jump time [s]']), color='k', linestyle='dashed', label=f'Median Jump Duration, {np.round(np.median(jump_df['jump time [s]']), 2)} seconds')
+    # ax.axhline(np.median(jump_df['jump amplitude [m]']), color='k', label=f'Median Jump Amplitude, {np.round(np.median(jump_df['jump amplitude [m]']), 2)} meters')
     # ax.set_xlabel('Jump Duration, $J_D$ [s]')
     # ax.set_ylabel('Jump Amplitude, $J_A$ [m]')
-
+    # ax.legend()
+    # ax.set_xlim(0, 35)
+    # ax.set_ylim(0, 90)
     # plt.show()
 
-    # Plot joint pdf for jump time and jump amplitude
-    g = sns.jointplot(x=jump_df['jump time [s]'], y=jump_df['jump amplitude [m]'], kind='scatter', color='k', s=5)
-    g.figure.set_figwidth(8)
-    g.figure.set_figheight(8)
-    plt.axvline(np.median(jump_df['jump time [s]']), color='k', linestyle='dashed', label=f'Median Jump Duration, {np.round(np.median(jump_df['jump time [s]']), 2)} seconds')
-    plt.axhline(np.median(jump_df['jump amplitude [m]']), color='k', label=f'Median Jump Amplitude, {np.round(np.median(jump_df['jump amplitude [m]']), 2)} meters')
-    plt.legend()
+    # # 2d Histogram of the Normalized Jump Metrics
+    # fig, ax = plt.subplots()
+    # _, _, _, im = ax.hist2d(jump_df['normalized jump time [-]'], jump_df['normalized jump amplitude [-]'], bins=(100, 100), cmap='inferno', cmin=0.25, density=True)
+    # cbar = fig.colorbar(im, ax=ax)
+    # cbar.set_label('Probability Density [-]')
+    # ax.axvline(np.median(jump_df['normalized jump time [-]']), color='k', linestyle='dashed', label=f'Median Jump Duration, {np.round(np.median(jump_df['normalized jump time [-]']), 2)} Wave Periods')
+    # ax.axhline(np.median(jump_df['normalized jump amplitude [-]']), color='k', label=f'Median Jump Amplitude, {np.round(np.median(jump_df['normalized jump amplitude [-]']), 2)} Wavelengths')
+    # ax.set_xlabel('Jump Duration, $J_D$ [s]')
+    # ax.set_ylabel('Jump Amplitude, $J_A$ [m]')
+    # ax.set_xlim(0, 4.2)
+    # ax.set_ylim(0, 1.5)
+    # ax.legend()
+    # plt.show()
+
+    # # 2d Histogram of the max Jump Speed as a function of Depth with linear phase speed curve 
+    # depths = np.linspace(0, 8, 100)
+    # fig, ax = plt.subplots()
+    # _, _, _, im = ax.hist2d(jump_df['jump depth [m]'], jump_df['max jump speed [m/s]'], bins=(100, 100), cmap='inferno', cmin=0.05, density=True)
+    # cbar = fig.colorbar(im, ax=ax)
+    # cbar.ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    # cbar.set_label('Number of Jumps [-]')
+    # ax.plot(depths, np.sqrt(9.8 * depths), color='c', linewidth=3, linestyle='dashed', label='Linear Phase Speed in Shallow Water, $\sqrt{gd}$')
+    # ax.plot(depths, 0.5 * np.sqrt(9.8 * depths), color='c', linewidth=3, label='Jump Speed Threshold, $u_{th}$')
+    # ax.set_xlabel('Average Depth of Jump, d [m]')
+    # ax.set_ylabel('Maximum Speed During Jump [m/s]')
+    # ax.set_xlim(0, 5)
+    # ax.set_ylim(0, 15)
+    # ax.legend()
+    # plt.show()
+
+    # # 2d Histogram of the cross shore location 
+    # fig, ax = plt.subplots()
+    # _, _, _, im = ax.hist2d(jump_df['normalized cross shore jump location [-]'], jump_df['normalized jump amplitude [-]'], bins=(100, 100), cmap='inferno', cmin=2, density=False)
+    # cbar = fig.colorbar(im, ax=ax)
+    # cbar.ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    # ax.axvline(1, color='k', linestyle='dashed', label='Surf Zone Edge, $\gamma = 0.35$')
+    # cbar.set_label('Number of Jumps [-]')
+    # ax.set_xlabel('Normalized Jump Location, $x/L_{sz}$ [-]')
+    # ax.set_ylabel('Normalized Jump Amplitude, $J_A/\lambda$ [-]')
+    # ax.set_xlim(0.25, 2)
+    # ax.set_ylim(0, 1)
+    # ax.legend()
+    # plt.show()
+
+    # # Boxplots of cross shore location and normalized jump amplitude
+    # ax1, ax2, counts, bin_centers = create_vertical_boxplots(jump_df['normalized cross shore jump location [-]'], jump_df['normalized jump amplitude [-]'], bins=10,
+    #                                                     xlabel='Normalized Cross Shore Location, $x/L_{sz}$ [-]', ylabel='Normalized Jump Amplitude, $J_A/\lambda$ [-]', 
+    #                                                     percent_ylabel='Percent of Total Data')
+    # ax1.axvline(1, color='k', linestyle='dashed', label='Surf Zone Edge, $\gamma = 0.35$')
+    # # ax.set_xlim(0, 0.6)
+    # # ax.set_ylim(0, 2)
+    # ax1.legend()
+    # plt.show()
+
+    # Plot the binned Median and number of points
+
+    # # Normalized Jump Amplitude as a function of the breaking irribarren number
+    # fig, ax = plt.subplots()
+    # ax = create_vertical_boxplots(jump_df['breaking iribarren_number [-]'], jump_df['normalized jump amplitude [-]'], ax=ax, bins=10)
+    # ax.set_xlabel('Breaking Irribarren Number [-]')
+    # ax.set_ylabel('Normalized Jump Amplitude, $J_A/\lambda$ [-]')
+    # # ax.set_xlim(0, 0.6)
+    # # ax.set_ylim(0, 2)
+    # ax.legend()
+    # plt.show()
+     # Boxplots of cross shore location and normalized jump amplitude
+    print(np.nanmax(jump_df['breaking iribarren_number [-]']))
+    ax1, ax2, counts, bin_centers = create_vertical_boxplots(jump_df['breaking iribarren_number [-]'], jump_df['normalized jump amplitude [-]'], bins=10,
+                                                        xlabel='Breaking Irribarren Number [-]', ylabel='Normalized Jump Amplitude, $J_A/\lambda$ [-]', 
+                                                        percent_ylabel='Percent of Total Data')
+    # ax1.axvline(1, color='k', linestyle='dashed', label='Surf Zone Edge, $\gamma = 0.35$')
+    # ax.set_xlim(0, 0.6)
+    # ax.set_ylim(0, 2)
+    ax1.legend()
     plt.show()
 
-    # Plot joint pdf for normalized jump time and jump amplitude
-    g = sns.jointplot(x=jump_df['normalized jump time [-]'], y=jump_df['normalized jump amplitude [-]'], kind='scatter', color='k', s=5)
-    g.figure.set_figwidth(8)
-    g.figure.set_figheight(8)
-    plt.axvline(np.median(jump_df['normalized jump time [-]']), color='k', linestyle='dashed', label=f'Median Jump Duration, {np.round(np.median(jump_df['normalized jump time [-]']), 2)} Wave Periods')
-    plt.axhline(np.median(jump_df['normalized jump amplitude [-]']), color='k', label=f'Median Normalized Jump Amplitude, {np.round(np.median(jump_df['normalized jump amplitude [-]']), 2)} Wavelengths')
-    plt.legend()
+    # # Normalized Jump Amplitude as a function of the wave height
+    # fig, ax = plt.subplots()
+    # _, _, _, im = ax.hist2d(jump_df['Offshore Hs [m]'], jump_df['normalized jump amplitude [-]'], bins=(100, 100), cmap='inferno', cmin=2, density=False)
+    # cbar = fig.colorbar(im, ax=ax)
+    # cbar.ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    # cbar.set_label('Number of Jumps [-]')
+    # ax.set_xlabel('Offshore Significant Wave Height, Hs [m]')
+    # ax.set_ylabel('Normalized Jump Amplitude, $J_A/\lambda$ [-]')
+    # # ax.set_xlim(0, 0.6)
+    # # ax.set_ylim(0, 2)
+    # ax.legend()
+    # plt.show()
+
+    # # Normalized Jump Amplitude as a function of the mean wave period 
+    # fig, ax = plt.subplots()
+    # _, _, _, im = ax.hist2d(jump_df['Offshore Tm [s]'], jump_df['normalized jump amplitude [-]'], bins=(100, 100), cmap='inferno', cmin=2, density=False)
+    # cbar = fig.colorbar(im, ax=ax)
+    # cbar.ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    # cbar.set_label('Number of Jumps [-]')
+    # ax.set_xlabel('Offshore mean Wave Period, Tm [s]')
+    # ax.set_ylabel('Normalized Jump Amplitude, $J_A/\lambda$ [-]')
+    # # ax.set_xlim(0, 0.6)
+    # # ax.set_ylim(0, 2)
+    # ax.legend()
+    # plt.show()
+
+    ax1, ax2, counts, bin_centers = create_vertical_boxplots(jump_df['Offshore Hs [m]'], jump_df['normalized jump amplitude [-]'], bins=10,
+                                                        xlabel='Offshore Wave Height [m]', ylabel='Normalized Jump Amplitude, $J_A/\lambda$ [-]', 
+                                                        percent_ylabel='Percent of Total Data')
+    # ax1.axvline(1, color='k', linestyle='dashed', label='Surf Zone Edge, $\gamma = 0.35$')
+    # ax.set_xlim(0, 0.6)
+    # ax.set_ylim(0, 2)
+    # ax1.legend()
     plt.show()
 
-    # # Plot the histogram of the normalized jump amplitudes
-    # mean_normalized_jump_amp = np.mean(jump_df['normalized jump amplitude [-]'])
-    
-    # ax.boxplot(jump_df['normalized jump amplitude [-]'])
-    # ax.axvline(mean_normalized_jump_amp, color='k', label=f'Average Jump Amplitude= {np.round(mean_normalized_jump_amp*100, 2)}% \n of a characteristic wavelength')
-    # ax.set_xlabel('Jump Amplitude/$\lambda$ [-]')
-    # ax.set_ylabel('Probability Density')
-    # ax.legend()
-    # plt.savefig('./figures/jump-amp-distribution.png')
-
-    # # Plot the histogram of normalized jump time
-    # mean_normalized_jump_time = np.mean(jump_df['normalized jump time [-]'])
-    # fig, ax = plt.subplots()
-    # ax.hist(jump_df['normalized jump time [-]'] , bins=25, density=True, color='steelblue')
-    # ax.axvline(mean_normalized_jump_time, color='k', label=f'Average Jump Time = {np.round(mean_normalized_jump_time*100, 2)}% \n of a characteristic period')
-    # ax.set_xlabel('Jump time/$T_m$ [-]')
-    # ax.set_ylabel('Probability Density')
-    # ax.legend()
-    # plt.savefig('./figures/jump-time-distribution.png')
-
-    # # Scatter plot of the jump speed versus the linear phase speed
-    # fig, ax = plt.subplots()
-    # ax.scatter(jump_df['linear phase speed at jump depth [m/s]'], jump_df['bulk jump speed [m/s]'], s=1, label='Bulk Speed')
-    # ax.scatter(jump_df['linear phase speed at jump depth [m/s]'], jump_df['mean jump speed [m/s]'], s=1, label='Mean Speed')
-    # ax.scatter(jump_df['linear phase speed at jump depth [m/s]'], jump_df['median jump speed [m/s]'], s=1, label='Median Speed')
-    # ax.scatter(jump_df['linear phase speed at jump depth [m/s]'], jump_df['max jump speed [m/s]'], s=1, label='Max Speed')
-    # ax.plot([0, 7.5], [0, 7.5], label='1:1 line', color='k')
-    # ax.set_xlabel('Linear Phase Speed at Jump Start [m/s]')
-    # ax.set_ylabel('Jump Speed [m/s]')
-    # ax.legend()
-    # plt.savefig(f'./figures/jump-speed-vs-phase-speed-threshold{fname[-7:-4]}.png')
+    ax1, ax2, counts, bin_centers = create_vertical_boxplots(jump_df['Offshore Tm [s]'], jump_df['normalized jump amplitude [-]'], bins=10,
+                                                        xlabel='Offshore Wave Height [m]', ylabel='Normalized Jump Amplitude, $J_A/\lambda$ [-]', 
+                                                        percent_ylabel='Percent of Total Data')
+    # ax1.axvline(1, color='k', linestyle='dashed', label='Surf Zone Edge, $\gamma = 0.35$')
+    # ax.set_xlim(0, 0.6)
+    # ax.set_ylim(0, 2)
+    # ax1.legend()
+    plt.show()
     
     return
 
