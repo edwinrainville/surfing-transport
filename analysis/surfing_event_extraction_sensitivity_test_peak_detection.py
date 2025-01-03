@@ -59,15 +59,17 @@ def main():
     # Jump time sensitivity
     ax1.boxplot(normalized_jump_times, showfliers=False)
     ax1.set_xticks([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], speed_thresholds)
-    ax1.set_xlabel('Fraction of Phase Speed for Speed Threshold')
-    ax1.set_ylabel('Normalized Jump Time')
+    # ax1.set_xlabel('Fraction of Phase Speed for Speed Threshold')
+    # ax1.set_ylabel('Normalized Jump Time')
+    ax1.tick_params(axis='both', labelsize=16)
     # ax1.set_ylim(0, 5)
     
     # Jump amp sensitivity
     ax2.boxplot(normalized_jump_amps, showfliers=False)
     ax2.set_xticks([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], speed_thresholds)
-    ax2.set_xlabel('Fraction of Phase Speed for Speed Threshold')
-    ax2.set_ylabel('Normalized Jump Amplitude')
+    # ax2.set_xlabel('Fraction of Phase Speed for Speed Threshold')
+    # ax2.set_ylabel('Normalized Jump Amplitude')
+    ax2.tick_params(axis='both', labelsize=16)
     # ax2.set_ylim(0, 1)
 
     #  # speed regression slope sensitivity
@@ -92,9 +94,10 @@ def main():
 
     # number of jumps
     ax3.scatter(speed_thresholds, number_of_jumps, color='k')
-    ax3.set_xlabel('Fraction of Phase Speed for Speed Threshold')
-    ax3.set_ylabel('Number of Jumps Detected')
+    # ax3.set_xlabel('Fraction of Phase Speed for Speed Threshold')
+    # ax3.set_ylabel('Number of Jumps Detected')
     ax3.set_xlim(0, 1.1)
+    ax3.tick_params(axis='both', labelsize=16)
 
     fig.tight_layout()
     plt.show()

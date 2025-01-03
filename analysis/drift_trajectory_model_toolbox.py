@@ -137,7 +137,7 @@ def compute_fraction_of_breaking_profiles(gamma, Hs_profile, depth_vals):
     qb = (Hs_profile/ (gamma * depth_vals)) ** n
     return qb
 
-def compute_error_metrics(buoy_final_location_x, buoy_final_location_y, true_track_time, modeled_track):
+def compute_error_metrics(buoy_final_location_x, buoy_final_location_y, true_track_time, modeled_track, surf_zone_width):
 
     # Check if the modeled trajectory made it to the same cross shore location as the true track
     if (np.abs(buoy_final_location_x - modeled_track[0][-1]) < 5):
@@ -147,10 +147,12 @@ def compute_error_metrics(buoy_final_location_x, buoy_final_location_y, true_tra
 
     # Compute the Alongshore difference metric
     delta_y = np.abs(buoy_final_location_y - modeled_track[1][-1])
+    delta_y_norm = np.abs(delta_y / surf_zone_width)
     delta_x = np.abs(buoy_final_location_x - modeled_track[0][-1])
 
     # Compute the time difference metric
     time_step = 1/12
     delta_t = (modeled_track[0].size * time_step) - true_track_time
+    delta_t_norm = np.abs(delta_t / true_track_time)
 
-    return final_cross_shore_position_reached, delta_y, delta_x, delta_t
+    return final_cross_shore_position_reached, delta_y, delta_x, delta_t, delta_y_norm, delta_t_norm

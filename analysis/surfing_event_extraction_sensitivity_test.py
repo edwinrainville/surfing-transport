@@ -18,39 +18,39 @@ def main():
     speed_regression_slopes = []
     number_of_jumps = []
 
-    n = 1
-    for speed_threshold in speed_thresholds:
-        print(f'Speed Threshold: {speed_threshold}. Processing is {n/len(speed_thresholds)*100}% complete.')
-        jumptimes, jumpamps, slope, numjumps = surfing_events(speed_threshold, plot_jumps=False, filter_on=True)
+    # n = 1
+    # for speed_threshold in speed_thresholds:
+    #     print(f'Speed Threshold: {speed_threshold}. Processing is {n/len(speed_thresholds)*100}% complete.')
+    #     jumptimes, jumpamps, slope, numjumps = surfing_events(speed_threshold, plot_jumps=False, filter_on=True)
 
-        normalized_jump_times.append(jumptimes)
-        average_normalized_jump_times.append(np.mean(jumptimes))
-        normalized_jump_amps.append(jumpamps)
-        average_normalized_jump_amps.append(np.mean(jumpamps))
-        speed_regression_slopes.append(slope)
-        number_of_jumps.append(numjumps)
+    #     normalized_jump_times.append(jumptimes)
+    #     average_normalized_jump_times.append(np.mean(jumptimes))
+    #     normalized_jump_amps.append(jumpamps)
+    #     average_normalized_jump_amps.append(np.mean(jumpamps))
+    #     speed_regression_slopes.append(slope)
+    #     number_of_jumps.append(numjumps)
 
-        n += 1
+    #     n += 1
 
     # Load the dataframes if the processing is already complete
-    # for speed_threshold in speed_thresholds:
-    #     fname = f'./data/jump_df_threshold{speed_threshold}.csv'
-    #     df = pd.read_csv(fname)
-    #     normalized_jump_times.append(df['normalized jump time [-]'].values)
-    #     average_normalized_jump_times.append(np.mean(df['normalized jump time [-]'].values))
-    #     normalized_jump_amps.append(df['normalized jump amplitude [-]'].values)
-    #     average_normalized_jump_amps.append(np.mean(df['normalized jump amplitude [-]'].values))
-    #     jump_speed = df['jump speed [m/s]'].values
-    #     linear_speed = df['linear phase speed at jump depth [m/s]'].values
-    #     regressor = LinearRegression()
-    #     regressor.fit(linear_speed.reshape(-1, 1), jump_speed.reshape(-1, 1))
-    #     speed_regression_slopes.append(regressor.coef_)
-    #     number_of_jumps.append(df.shape[0])
+    for speed_threshold in speed_thresholds:
+        fname = f'./data/jump_df_threshold{speed_threshold}.csv'
+        df = pd.read_csv(fname)
+        normalized_jump_times.append(df['normalized jump time [-]'].values)
+        average_normalized_jump_times.append(np.mean(df['normalized jump time [-]'].values))
+        normalized_jump_amps.append(df['normalized jump amplitude [-]'].values)
+        average_normalized_jump_amps.append(np.mean(df['normalized jump amplitude [-]'].values))
+        jump_speed = df['bulk jump speed [m/s]'].values
+        linear_speed = df['linear phase speed at jump depth [m/s]'].values
+        regressor = LinearRegression()
+        regressor.fit(linear_speed.reshape(-1, 1), jump_speed.reshape(-1, 1))
+        speed_regression_slopes.append(regressor.coef_)
+        number_of_jumps.append(df.shape[0])
 
     # Plot the sensitivity study
     fig, ((ax1, ax2), (ax3, ax4), (ax5, ax6)) = plt.subplots(ncols=2, nrows=3, figsize=(10,10))
     # Jump time sensitivity
-    ax1.boxplot(normalized_jump_times)
+    ax1.boxplot(normalized_jump_times, )
     ax1.set_xticks([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], speed_thresholds)
     ax1.set_xlabel('Speed Thresholds')
     ax1.set_ylabel('Normalized Jump Time')
@@ -88,8 +88,8 @@ def main():
     ax6.set_xlim(0, 1.1)
 
     fig.tight_layout()
-    fig.savefig(f'./figures/speed_threshold_sensitivity_test_filtered.png')
-    plt.close()
+    # fig.savefig(f'./figures/speed_threshold_sensitivity_test_filtered.png')
+    plt.show()
 
     return
 

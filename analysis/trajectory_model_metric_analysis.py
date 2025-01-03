@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 from scipy.stats import bootstrap
 
 def create_vertical_boxplots(x, y, bins=10, min=None, max=None, xlabel='Bin Center', ylabel='Y Values', percent_ylabel='Percent of Total Data'):
@@ -103,26 +104,34 @@ def main():
     fname = './data/trajectory_model_error_metrics_with_missiondata.csv'
     model_df = pd.read_csv(fname)
 
+    # Average Surf Zone Width
+    fname = './data/mission_df.csv'
+    mission_df = pd.read_csv(fname)
+    mean_surf_zone_width = np.mean(mission_df['surf zone width [m]'])
+    print(mean_surf_zone_width)
+    mean_mission_length = np.mean(mission_df['mission length [s]'])
+    print(mean_mission_length)
+
     print(f'Number of Trajectories: {len(model_df)}')
 
     # Compute the median of each group and a 95% confidence interval for each group rather than showing the boxplot
     wind_only_delta_y_mean, wind_only_delta_y_ci_low, wind_only_delta_y_ci_high = bootstrap_mean(model_df['wind only delta y'])
     wind_and_waves_delta_y_mean, wind_and_waves_delta_y_ci_low, wind_and_waves_delta_y_ci_high = bootstrap_mean(model_df['wind and waves delta y'])
     wind_waves_surf_delta_y_mean, wind_waves_surf_delta_y_ci_low, wind_waves_surf_delta_y_ci_high = bootstrap_mean(model_df['wind and waves and surf delta y'])
-    # Plot the Bootstrap errors and confidence intervals
-    fig, ax = plt.subplots()
-    x_vals = [1, 2, 3]
-    x_ticks = ['Wind Only', 'Wind and Waves', 'Wind, Waves, and Surfing']
-    error_mean = [wind_only_delta_y_mean, wind_and_waves_delta_y_mean, wind_waves_surf_delta_y_mean]
-    ci_low = [(wind_only_delta_y_mean - wind_only_delta_y_ci_low), (wind_and_waves_delta_y_mean - wind_and_waves_delta_y_ci_low), (wind_waves_surf_delta_y_mean - wind_waves_surf_delta_y_ci_low)] # The confidence interval is computed for the true value but to plot it needs an error from teh computed statistic 
-    ci_high = [(wind_only_delta_y_ci_high - wind_only_delta_y_mean), (wind_and_waves_delta_y_ci_high - wind_and_waves_delta_y_mean), (wind_waves_surf_delta_y_ci_high - wind_waves_surf_delta_y_mean)]
-    ax.errorbar(x=x_vals, y=error_mean, yerr=[ci_low, ci_high], marker='s', capsize=5, mfc='k', mec='k', color='k', linestyle='None', label='Mean Error and 95% Confidence Interval')
-    ax.axhline(0, color='k', linestyle='dashed', label='No Error')
-    ax.legend()
-    ax.set_title('All Trajectories')
-    ax.set_ylabel('Absolute Along Shore Difference between Final Position [m]')
-    plt.xticks(x_vals, x_ticks)
-    plt.show()
+    # # Plot the Bootstrap errors and confidence intervals
+    # fig, ax = plt.subplots()
+    # x_vals = [1, 2, 3]
+    # x_ticks = ['Wind Only', 'Wind and Waves', 'Wind, Waves, and Surfing']
+    # error_mean = [wind_only_delta_y_mean, wind_and_waves_delta_y_mean, wind_waves_surf_delta_y_mean]
+    # ci_low = [(wind_only_delta_y_mean - wind_only_delta_y_ci_low), (wind_and_waves_delta_y_mean - wind_and_waves_delta_y_ci_low), (wind_waves_surf_delta_y_mean - wind_waves_surf_delta_y_ci_low)] # The confidence interval is computed for the true value but to plot it needs an error from teh computed statistic 
+    # ci_high = [(wind_only_delta_y_ci_high - wind_only_delta_y_mean), (wind_and_waves_delta_y_ci_high - wind_and_waves_delta_y_mean), (wind_waves_surf_delta_y_ci_high - wind_waves_surf_delta_y_mean)]
+    # ax.errorbar(x=x_vals, y=error_mean, yerr=[ci_low, ci_high], marker='s', capsize=5, mfc='k', mec='k', color='k', linestyle='None', label='Mean Error and 95% Confidence Interval')
+    # ax.axhline(0, color='k', linestyle='dashed', label='No Error')
+    # ax.legend()
+    # ax.set_title('All Trajectories')
+    # ax.set_ylabel('Absolute Along Shore Difference between Final Position [m]')
+    # plt.xticks(x_vals, x_ticks)
+    # plt.show()
 
     # Number of modeled trajectories that successfully reached the beach/final crossshore position of the true trajectory
     wind_only_beached = np.round(len(model_df[model_df['wind only correct final x'] == True])/ len(model_df) * 100, 2)
@@ -146,104 +155,125 @@ def main():
     wind_and_waves_delta_y_mean, wind_and_waves_delta_y_ci_low, wind_and_waves_delta_y_ci_high = bootstrap_mean(model_df[model_df['wind and waves correct final x'] == True]['wind and waves delta y'])
     wind_waves_surf_delta_y_mean, wind_waves_surf_delta_y_ci_low, wind_waves_surf_delta_y_ci_high = bootstrap_mean(model_df[model_df['wind and waves and surf correct final x'] == True]['wind and waves and surf delta y'])
     
+    percent_improved_from_wind_only = np.abs(wind_waves_surf_delta_y_mean - wind_only_delta_y_mean) / wind_only_delta_y_mean * 100
+    percent_improved_from_wind_and_waves = np.abs(wind_waves_surf_delta_y_mean - wind_and_waves_delta_y_mean) / wind_and_waves_delta_y_mean * 100
+    print(f'Improved {percent_improved_from_wind_only}% from wind only')
+    print(f'Improved {percent_improved_from_wind_and_waves}% from wind and waves')
+    
     # Plot the Bootstrap errors and confidence intervals
     fig, ax = plt.subplots()
-    x_vals = [1, 2, 3]
-    x_ticks = ['Wind Only', 'Wind and Waves', 'Wind, Waves, and Surfing']
+    width = 0.2  # the width of the bars
+    x_vals = np.array([1, 2, 3])
+    # x_ticks = ['Wind Only', 'Wind and Waves', 'Wind, Waves, and Surfing']
+    x_ticks = ['', '', '']
     error_mean = [wind_only_delta_y_mean, wind_and_waves_delta_y_mean, wind_waves_surf_delta_y_mean]
-    ci_low = [(wind_only_delta_y_mean - wind_only_delta_y_ci_low), (wind_and_waves_delta_y_mean - wind_and_waves_delta_y_ci_low), (wind_waves_surf_delta_y_mean - wind_waves_surf_delta_y_ci_low)]
-    ci_high = [(wind_only_delta_y_ci_high - wind_only_delta_y_mean), (wind_and_waves_delta_y_ci_high - wind_and_waves_delta_y_mean), (wind_waves_surf_delta_y_ci_high - wind_waves_surf_delta_y_mean)]
-    ax.errorbar(x=x_vals, y=error_mean, yerr=[ci_low, ci_high], marker='s', capsize=5, mfc='k', mec='k', color='k', linestyle='None', label='Mean Error and 95% Confidence Interval')
-    ax.axhline(0, color='k', linestyle='dashed', label='No Error')
-    ax.legend(loc='upper right')
-    ax.set_title('Beached Successfully')
-    ax.set_ylabel('Absolute Along Shore Difference between Final Position [m]')
-    ax.set_ylim(-50, 500)
+    ci_low = [(wind_only_delta_y_mean - wind_only_delta_y_ci_low), (wind_and_waves_delta_y_mean - wind_and_waves_delta_y_ci_low), 
+              (wind_waves_surf_delta_y_mean - wind_waves_surf_delta_y_ci_low)]
+    ci_high = [(wind_only_delta_y_ci_high - wind_only_delta_y_mean), 
+               (wind_and_waves_delta_y_ci_high - wind_and_waves_delta_y_mean),
+               (wind_waves_surf_delta_y_ci_high - wind_waves_surf_delta_y_mean)]
+    bar1 = ax.bar(x_vals, error_mean, width, yerr=[ci_low, ci_high], capsize=5)
+    def normalize_delta_y(errors):
+        return errors/mean_surf_zone_width
+    
+    def dimensional_delta_y(norm_errors):
+        return norm_errors * mean_surf_zone_width
+    ax2 = ax.secondary_yaxis('right', functions=(normalize_delta_y, dimensional_delta_y))
+    # ax.legend(loc='upper right')
+    # ax.set_title('Beached Successfully')
+    # ax.set_ylabel('Absolute Along Shore Difference between Final Position [m]')
     plt.xticks(x_vals, x_ticks)
     plt.show()
 
+    print(error_mean/mean_surf_zone_width)
     # ------------- Delta t error ----------------
     # Compute the median of each group and a 95% confidence interval for each group rather than showing the boxplot
     wind_only_delta_t_mean, wind_only_delta_t_ci_low, wind_only_delta_t_ci_high = bootstrap_mean(model_df[model_df['wind only correct final x'] == True]['wind only delta t'])
     wind_and_waves_delta_t_mean, wind_and_waves_delta_t_ci_low, wind_and_waves_delta_t_ci_high = bootstrap_mean(model_df[model_df['wind and waves correct final x'] == True]['wind and waves delta t'])
     wind_waves_surf_delta_t_mean, wind_waves_surf_delta_t_ci_low, wind_waves_surf_delta_t_ci_high = bootstrap_mean(model_df[model_df['wind and waves and surf correct final x'] == True]['wind and waves and surf delta t'])
 
+    percent_improved_from_wind_only_delta_t = np.abs(wind_waves_surf_delta_t_mean - wind_only_delta_t_mean) / wind_only_delta_t_mean * 100
+    percent_improved_from_wind_and_waves_delta_t = np.abs(wind_waves_surf_delta_t_mean - wind_and_waves_delta_t_mean) / wind_and_waves_delta_t_mean * 100
+    print(f'Improved {percent_improved_from_wind_only_delta_t}% from wind only')
+    print(f'Improved {percent_improved_from_wind_and_waves_delta_t}% from wind and waves')
+    
     # Plot the Bootstrap errors and confidence intervals
     fig, ax = plt.subplots()
     x_vals = [1, 2, 3]
-    x_ticks = ['Wind Only', 'Wind and Waves', 'Wind, Waves, and Surfing']
+    # x_ticks = ['Wind Only', 'Wind and Waves', 'Wind, Waves, and Surfing']
+    x_ticks = ['', '', '']
     error_mean = [wind_only_delta_t_mean, wind_and_waves_delta_t_mean, wind_waves_surf_delta_t_mean]
     ci_low = [(wind_only_delta_t_mean - wind_only_delta_t_ci_low), (wind_and_waves_delta_t_mean - wind_and_waves_delta_t_ci_low), (wind_waves_surf_delta_t_mean - wind_waves_surf_delta_t_ci_low)]
     ci_high = [(wind_only_delta_t_ci_high - wind_only_delta_t_mean), (wind_and_waves_delta_t_ci_high - wind_and_waves_delta_t_mean), (wind_waves_surf_delta_t_ci_high - wind_waves_surf_delta_t_mean)]
-    ax.errorbar(x=x_vals, y=error_mean, yerr=[ci_low, ci_high], marker='s', capsize=5, mfc='k', mec='k', color='k', linestyle='None', label='Mean Error and 95% Confidence Interval')
+    
+    bar1 = ax.bar(x_vals, error_mean, width, yerr=[ci_low, ci_high], capsize=5)
     ax.axhline(0, color='k', linestyle='dashed', label='No Error')
-    ax.legend(loc='upper right')
-    ax.set_title('Beached Successfully')
-    ax.set_ylabel('Difference between time to beach [s]')
-    ax.set_ylim(-300, 2200)
+
+    def normalize_delta_t(errors):
+        return errors/mean_mission_length
+    
+    def dimensional_delta_t(norm_errors):
+        return norm_errors * mean_mission_length
+    ax2 = ax.secondary_yaxis('right', functions=(normalize_delta_t, dimensional_delta_t))
+    # ax.legend(loc='upper right')
+    # ax.set_title('Beached Successfully')
+    # ax.set_ylabel('Difference between time to beach [s]')
+    # ax.set_ylim(-300, 2200)
     plt.xticks(x_vals, x_ticks)
     plt.show()
 
-    # ------- Delta y error vs. wave angle -------------
-    # Compute the median of each group and a 95% confidence interval for each group rather than showing the boxplot
-    wind_only_correct_x_df = model_df[model_df['wind only correct final x'] == True]
-    wind_and_waves_correct_x_df = model_df[model_df['wind and waves correct final x'] == True]
-    wind_waves_surf_correct_x_df = model_df[model_df['wind and waves and surf correct final x'] == True]
+    print(error_mean)
 
-    # Less than 15 degrees
-    wind_only_L15deg_delta_y_mean, wind_only_L15deg_delta_y_ci_low, wind_only_L15deg_delta_y_ci_high = bootstrap_mean(wind_only_correct_x_df[np.abs(wind_only_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) < 15]['wind only delta y'])
-    wind_and_waves_L15deg_delta_y_mean, wind_and_waves_L15deg_delta_y_ci_low, wind_and_waves_L15deg_delta_y_ci_high = bootstrap_mean(wind_and_waves_correct_x_df[np.abs(wind_and_waves_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) < 15]['wind and waves delta y'])
-    wind_waves_surf_L15deg_delta_y_mean, wind_waves_surf_L15deg_delta_y_ci_low, wind_waves_surf_L15deg_delta_y_ci_high = bootstrap_mean(wind_waves_surf_correct_x_df[np.abs(wind_waves_surf_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) < 15]['wind and waves and surf delta y'])
-    
-    # 15 < theta < 30
-    wind_only_15t30deg_delta_y_mean, wind_only_15t30deg_delta_y_ci_low, wind_only_15t30deg_delta_y_ci_high = bootstrap_mean(wind_only_correct_x_df[(np.abs(wind_only_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) > 15)]['wind only delta y'])
-    wind_and_waves_15t30deg_delta_y_mean, wind_and_waves_15t30deg_delta_y_ci_low, wind_and_waves_15t30deg_delta_y_ci_high = bootstrap_mean(wind_and_waves_correct_x_df[(np.abs(wind_and_waves_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) > 15)]['wind and waves delta y'])
-    wind_waves_surf_15t30deg_delta_y_mean, wind_waves_surf_15t30deg_delta_y_ci_low, wind_waves_surf_15t30deg_delta_y_ci_high = bootstrap_mean(wind_waves_surf_correct_x_df[(np.abs(wind_waves_surf_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) > 15)]['wind and waves and surf delta y'])
-    
-    # # 30 < theta < 45
-    # print(len(wind_only_correct_x_df[(np.abs(wind_only_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) < 45) & (np.abs(wind_only_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) > 30)]))
-    # wind_only_30t45deg_delta_y_mean, wind_only_30t45deg_delta_y_ci_low, wind_only_30t45deg_delta_y_ci_high = bootstrap_mean(wind_only_correct_x_df[(np.abs(wind_only_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) < 45) & (np.abs(wind_only_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) > 30)]['wind only delta y'])
-    # wind_and_waves_30t45deg_delta_y_mean, wind_and_waves_30t45deg_delta_y_ci_low, wind_and_waves_30t45deg_delta_y_ci_high = bootstrap_mean(wind_and_waves_correct_x_df[(np.abs(wind_and_waves_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) < 45) & (np.abs(wind_and_waves_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) > 30)]['wind and waves delta y'])
-    # wind_waves_surf_30t45deg_delta_y_mean, wind_waves_surf_30t45deg_delta_y_ci_low, wind_waves_surf_30t45deg_delta_y_ci_high = bootstrap_mean(wind_waves_surf_correct_x_df[(np.abs(wind_waves_surf_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) < 45) & (np.abs(wind_waves_surf_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) > 30)]['wind and waves and surf delta y'])
-    
-    print(wind_waves_surf_correct_x_df[(np.abs(wind_waves_surf_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) < 45) & (np.abs(wind_waves_surf_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) > 30)])
+    # # ------- Delta y error vs. wave angle -------------
+    # # Compute the median of each group and a 95% confidence interval for each group rather than showing the boxplot
+    # wind_only_correct_x_df = model_df[model_df['wind only correct final x'] == True]
+    # wind_and_waves_correct_x_df = model_df[model_df['wind and waves correct final x'] == True]
+    # wind_waves_surf_correct_x_df = model_df[model_df['wind and waves and surf correct final x'] == True]
 
+    # # Less than 15 degrees
+    # wind_only_L15deg_delta_y_mean, wind_only_L15deg_delta_y_ci_low, wind_only_L15deg_delta_y_ci_high = bootstrap_mean(wind_only_correct_x_df[np.abs(wind_only_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) < 15]['wind only delta y'])
+    # wind_and_waves_L15deg_delta_y_mean, wind_and_waves_L15deg_delta_y_ci_low, wind_and_waves_L15deg_delta_y_ci_high = bootstrap_mean(wind_and_waves_correct_x_df[np.abs(wind_and_waves_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) < 15]['wind and waves delta y'])
+    # wind_waves_surf_L15deg_delta_y_mean, wind_waves_surf_L15deg_delta_y_ci_low, wind_waves_surf_L15deg_delta_y_ci_high = bootstrap_mean(wind_waves_surf_correct_x_df[np.abs(wind_waves_surf_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) < 15]['wind and waves and surf delta y'])
     
-    # Plot the Bootstrap errors and confidence intervals
-    fig, ax = plt.subplots()
-    x_ticks = ['$\\theta < 15\\degree$', '$\\theta > 15\\degree$']
+    # # theta > 15
+    # wind_only_15t30deg_delta_y_mean, wind_only_15t30deg_delta_y_ci_low, wind_only_15t30deg_delta_y_ci_high = bootstrap_mean(wind_only_correct_x_df[(np.abs(wind_only_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) > 15)]['wind only delta y'])
+    # wind_and_waves_15t30deg_delta_y_mean, wind_and_waves_15t30deg_delta_y_ci_low, wind_and_waves_15t30deg_delta_y_ci_high = bootstrap_mean(wind_and_waves_correct_x_df[(np.abs(wind_and_waves_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) > 15)]['wind and waves delta y'])
+    # wind_waves_surf_15t30deg_delta_y_mean, wind_waves_surf_15t30deg_delta_y_ci_low, wind_waves_surf_15t30deg_delta_y_ci_high = bootstrap_mean(wind_waves_surf_correct_x_df[(np.abs(wind_waves_surf_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) > 15)]['wind and waves and surf delta y'])
 
-    # # Wind Only
-    # x_wind_only = [0.8, 1.8, 2.8]
-    # error_mean_wind_only = [wind_only_L15deg_delta_y_mean, wind_only_15t30deg_delta_y_mean, wind_only_30t45deg_delta_y_mean]
-    # ci_low_wind_only = [(wind_only_L15deg_delta_y_mean - wind_only_L15deg_delta_y_ci_low), 0, 0]
-    # ci_high_wind_only = [(wind_only_L15deg_delta_y_ci_high - wind_only_L15deg_delta_y_mean), 0, 0]
-    # ax.errorbar(x=x_wind_only, y=error_mean_wind_only, yerr=[ci_low_wind_only, ci_high_wind_only], marker='s', capsize=5, mfc='k', mec='k', color='k', linestyle='None', label='Wind Only')
+    # print(wind_waves_surf_correct_x_df[(np.abs(wind_waves_surf_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) < 45) & (np.abs(wind_waves_surf_correct_x_df['Mean Wave Dir FRF [deg] (8marray)']) > 30)])
     
-    # Wind and Waves
-    x_wind_and_waves = [0.5, 0.75]
-    error_mean_wind_and_waves = [wind_and_waves_L15deg_delta_y_mean, wind_and_waves_15t30deg_delta_y_mean]
-    ci_low_wind_and_waves = [(wind_and_waves_L15deg_delta_y_mean - wind_and_waves_L15deg_delta_y_ci_low), (wind_and_waves_15t30deg_delta_y_mean - wind_and_waves_15t30deg_delta_y_ci_low)]
-    ci_high_wind_and_waves = [(wind_and_waves_L15deg_delta_y_ci_high - wind_and_waves_L15deg_delta_y_mean), (wind_and_waves_15t30deg_delta_y_ci_high - wind_and_waves_15t30deg_delta_y_mean)]
-    ax.errorbar(x=x_wind_and_waves, y=error_mean_wind_and_waves, yerr=[ci_low_wind_and_waves, ci_high_wind_and_waves], marker='s', capsize=5, mfc='b', mec='b', color='b', linestyle='None', label='Wind and Waves')
-    
-    # Wind, Waves, Surf
-    x_wind_waves_surf = [0.55, 0.80]
-    error_mean_wind_waves_surf = [ wind_waves_surf_L15deg_delta_y_mean, wind_waves_surf_15t30deg_delta_y_mean]
-    ci_low_wind_waves_surf = [(wind_waves_surf_L15deg_delta_y_mean - wind_waves_surf_L15deg_delta_y_ci_low), (wind_waves_surf_15t30deg_delta_y_mean - wind_waves_surf_15t30deg_delta_y_ci_low)]
-    ci_high_wind_waves_surf = [(wind_waves_surf_L15deg_delta_y_ci_high - wind_waves_surf_L15deg_delta_y_mean), (wind_waves_surf_15t30deg_delta_y_ci_high - wind_waves_surf_15t30deg_delta_y_mean)]
-    ax.errorbar(x=x_wind_waves_surf, y=error_mean_wind_waves_surf, yerr=[ci_low_wind_waves_surf, ci_high_wind_waves_surf], marker='s', capsize=5, mfc='m', mec='m', color='m', linestyle='None', label='Wind, Waves, and Surfing')
-    
-    ax.axhline(0, color='k', linestyle='dashed', label='No Error')
-    ax.legend(loc='upper left')
-    ax.set_title('Beached Successfully')
-    ax.set_ylabel('Absolute Along Shore Difference between Final Position [m]')
-    # ax.set_ylim(-50, 500)
-    plt.xticks(x_wind_and_waves, x_ticks)
-    plt.show()
+    # # Plot the Bootstrap errors and confidence intervals
+    # fig, ax = plt.subplots()
+    # categories = ['$\\theta < 15\\degree$', '$\\theta > 15\\degree$']
+    # width = 0.2  # the width of the bars
+    # x = np.arange(len(categories))
 
-    
+    # # Wind and Waves
+    # x_wind_and_waves = [0.5, 0.75]
+    # error_mean_wind_and_waves = [wind_and_waves_L15deg_delta_y_mean, wind_and_waves_15t30deg_delta_y_mean]
+    # ci_low_wind_and_waves = [(wind_and_waves_L15deg_delta_y_mean - wind_and_waves_L15deg_delta_y_ci_low), (wind_and_waves_15t30deg_delta_y_mean - wind_and_waves_15t30deg_delta_y_ci_low)]
+    # ci_high_wind_and_waves = [(wind_and_waves_L15deg_delta_y_ci_high - wind_and_waves_L15deg_delta_y_mean), (wind_and_waves_15t30deg_delta_y_ci_high - wind_and_waves_15t30deg_delta_y_mean)]
 
+    # bar1 = ax.bar(x, error_mean_wind_and_waves, width, yerr=[ci_low_wind_and_waves, ci_high_wind_and_waves], label='Wind and Waves', color='blue')
+
+    # # Wind, Waves, Surf
+    # x_wind_waves_surf = [0.55, 0.80]
+    # error_mean_wind_waves_surf = [ wind_waves_surf_L15deg_delta_y_mean, wind_waves_surf_15t30deg_delta_y_mean]
+    # ci_low_wind_waves_surf = [(wind_waves_surf_L15deg_delta_y_mean - wind_waves_surf_L15deg_delta_y_ci_low), (wind_waves_surf_15t30deg_delta_y_mean - wind_waves_surf_15t30deg_delta_y_ci_low)]
+    # ci_high_wind_waves_surf = [(wind_waves_surf_L15deg_delta_y_ci_high - wind_waves_surf_L15deg_delta_y_mean), (wind_waves_surf_15t30deg_delta_y_ci_high - wind_waves_surf_15t30deg_delta_y_mean)]
+    # bar2 = ax.bar(x + width, error_mean_wind_waves_surf, width, yerr=[ci_low_wind_waves_surf, ci_high_wind_waves_surf], label='Wind, Waves, and Surfing', color='m')
+    
+    # # Second y axis with normalized errors
+    # ax2 = plt.twinx()
+    # bar3 = ax2.bar(x, error_mean_wind_and_waves/mean_surf_zone_width, width, yerr=[ci_low_wind_and_waves/mean_surf_zone_width, ci_high_wind_and_waves/mean_surf_zone_width], color='blue')
+    # bar4 = ax2.bar(x + width, error_mean_wind_waves_surf/mean_surf_zone_width, width,  yerr=[ci_low_wind_waves_surf/mean_surf_zone_width, ci_high_wind_waves_surf/mean_surf_zone_width], color='m')
+
+    # ax.set_xlabel('Wave Angle Relative to Shore Normal')
+    # ax.set_ylabel('Absolute Difference of beaching location')
+    # ax.set_xticks(x + width / 2)  # Center the ticks between the two bars
+    # ax.set_xticklabels(categories)
+    # ax.legend(loc='upper left')
+    # plt.show()
 
     return
 

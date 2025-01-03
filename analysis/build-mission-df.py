@@ -75,6 +75,7 @@ def main():
     # Mission metadata
     mission_number_all = []
     mission_time_all = []
+    mission_length_all = []
 
     # Wave Data from 8m Array
     hs_8marray_all = []
@@ -127,6 +128,7 @@ def main():
         # Open the mission file and get mission metadata
         mission_dataset = nc.Dataset(mission_nc, mode='r')
         mission_time = np.median(mission_dataset['time'][:])
+        mission_length_all.append(mission_dataset['time'][-1] - mission_dataset['time'][0])
         mission_time_all.append(mission_time)
         mission_number_all.append(int(mission_nc[15:-3]))
         time_units = mission_dataset['time'].units
@@ -187,6 +189,7 @@ def main():
     mission_df['mission number'] = mission_number_all
 
     # Wave Data 8 m array
+    mission_df['mission length [s]'] = mission_length_all
     mission_df['Hs [m] (8marray)'] = hs_8marray_all
     mission_df['Tm [s] (8marray)'] = tm_8marrayall
     mission_df['Mean Dir [deg] (8marray)'] = mean_wave_dir_8marray_all

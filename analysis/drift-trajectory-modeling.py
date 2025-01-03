@@ -204,7 +204,7 @@ def simulate_track_wind_and_waves_and_surfing(mission_num, init_x_loc, init_y_lo
                     depth = interpolate.interpn(points=(x_profile_coords, y_profile_coords), 
                                                 values=np.transpose(-bathy), xi=[x_location[-1], y_location[-1]], 
                                                 bounds_error=False, fill_value=None)[0]
-                    surf_speed = np.sqrt(g * np.abs(depth))
+                    surf_speed = 0.72 * np.sqrt(g * np.abs(depth))
                     wait_until_next_jump = Tm // delta_t
                 else: 
                     wait_until_next_jump = Tm // delta_t
@@ -214,13 +214,16 @@ def simulate_track_wind_and_waves_and_surfing(mission_num, init_x_loc, init_y_lo
 
             if surfing is True:
                 n = 0 
-                while n < surf_time_time_steps and x_location[-1] > buoy_final_location and x_location[-1] > x_beach :
-                    # Udpate the y location to stay constant 
-                    y_location.append(y_location[-1])
+                while n < surf_time_time_steps and x_location[-1] > buoy_final_location and x_location[-1] > x_beach:
+                    # Find the wave angle at this time step and surf in the direction of the waves
+                    theta_at_timestep = np.interp(x_location[-1], x_profile_coords, theta)
 
-                    # Update the x location to travel towards the beach at phase speed
-                    # Note surf speed is negative since it is towards the beach 
-                    x_nextstep = x_location[-1] + -surf_speed * delta_t
+                    # Update the y location for surfing
+                    y_nextstep = y_location[-1] + surf_speed * (np.sin(np.deg2rad(theta_at_timestep + 180))) * delta_t
+                    y_location.append(y_nextstep)
+
+                    # Update the x location for surfing
+                    x_nextstep = x_location[-1] + surf_speed * (np.cos(np.deg2rad(theta_at_timestep + 180))) * delta_t
                     x_location.append(x_nextstep)
                     n += 1 
             
@@ -261,7 +264,7 @@ def simulate_track_wind_and_waves_and_surfing(mission_num, init_x_loc, init_y_lo
                     depth = interpolate.interpn(points=(x_profile_coords, y_profile_coords), 
                                                 values=np.transpose(-bathy), xi=[x_location[-1], y_location[-1]], 
                                                 bounds_error=False, fill_value=None)[0]
-                    surf_speed = np.sqrt(g * np.abs(depth))
+                    surf_speed = 0.72 * np.sqrt(g * np.abs(depth))
                     wait_until_next_jump = Tm // delta_t
                 else: 
                     wait_until_next_jump = Tm // delta_t
@@ -311,7 +314,9 @@ def figure_setup(fig, ax, bathy_file, stokes_drift, wave_dir_FRF_mathconv, wind_
     x, y = np.meshgrid(bathy_dataset['xFRF'][:],bathy_dataset['yFRF'][:])
     bathy = bathy_dataset['elevation'][0,:,:]
     bathy_dataset.close()
+    bathy_positive = np.ma.masked_where(bathy < 0, bathy)
     im = ax.contourf(x, y, bathy, cmap=cmocean.cm.deep_r)
+    contourf_positive = ax.contourf(x, y, bathy_positive, colors=['orange'])
     cbar = fig.colorbar(im)
     cbar.ax.set_ylabel('Elevation, z [m]', fontsize=15)
 
@@ -356,16 +361,22 @@ def main():
     trajectory_num_all = []
     wind_only_correct_final_x_all = []
     wind_only_delta_y_all = []
+    wind_only_delta_y_all_norm = []
     wind_only_delta_x_all = []
     wind_only_delta_t_all = []
+    wind_only_delta_t_all_norm = []
     wind_and_waves_correct_final_x_all = []
     wind_and_waves_delta_y_all = []
+    wind_and_waves_delta_y_all_norm = []
     wind_and_waves_delta_x_all = []
     wind_and_waves_delta_t_all = []
+    wind_and_waves_delta_t_all_norm = []
     wind_and_waves_and_surf_correct_final_x_all = []
     wind_and_waves_and_surf_delta_y_all = []
+    wind_and_waves_and_surf_delta_y_all_norm = []
     wind_and_waves_and_surf_delta_x_all = []
     wind_and_waves_and_surf_delta_t_all = []
+    wind_and_waves_and_surf_delta_t_all_norm = []
 
     # Loop through all missions
     progress_counter = 0
@@ -400,6 +411,7 @@ def main():
         water_level = mission_df[mission_df['mission number'] == mission_num]['water level [m]'].values[0]
         surf_zone_edge = mission_df[mission_df['mission number'] == mission_num]['surf zone edge [m]'].values[0]
         x_beach = mission_df[mission_df['mission number'] == mission_num]['beach edge [m]'].values[0]
+        surf_zone_width = surf_zone_edge - x_beach
         
         # Get Bathymetry information
         bathy_file = './data/FRF_geomorphology_DEMs_surveyDEM_20211021.nc'
@@ -491,7 +503,8 @@ def main():
                                     track_color='orange', label='Wind, Waves, and Surfing Model')
                 
                 # Save the Figure
-                ax.legend()
+                ax.legend(markerscale=2)
+                ax.tick_params(axis='both', labelsize=16)
                 plt.savefig(f'./figures/modeled-trajectories/Mission {mission_num} - Trajectory {trajectory_num}.png')
                 plt.close()
 
@@ -500,26 +513,53 @@ def main():
                 trajectory_num_all.append(trajectory_num)
                 
                 # Wind Only Error Metrics
-                wind_only_correct_final_x, wind_only_delta_y, wind_only_delta_x, wind_only_delta_t = tools.compute_error_metrics(buoy_final_location_x, buoy_final_location_y, true_track_time, windonly_track)
+                wind_only_correct_final_x, wind_only_delta_y, \
+                wind_only_delta_x, wind_only_delta_t, \
+                wind_only_delta_y_norm, wind_only_delta_t_norm = tools.compute_error_metrics(buoy_final_location_x, 
+                                                                                             buoy_final_location_y, 
+                                                                                             true_track_time,
+                                                                                             windonly_track, 
+                                                                                             surf_zone_width)
                 wind_only_correct_final_x_all.append(wind_only_correct_final_x)
                 wind_only_delta_y_all.append(wind_only_delta_y)
+                wind_only_delta_y_all_norm.append(wind_only_delta_y_norm)
                 wind_only_delta_x_all.append(wind_only_delta_x)
                 wind_only_delta_t_all.append(wind_only_delta_t)
+                wind_only_delta_t_all_norm.append(wind_only_delta_t_norm)
                 
                 # Wind and Wave Error Metrics
-                wind_and_waves_correct_final_x, wind_and_waves_delta_y, wind_and_waves_delta_x, wind_and_waves_delta_t = tools.compute_error_metrics(buoy_final_location_x, buoy_final_location_y, true_track_time, wind_and_waves_track)
+                wind_and_waves_correct_final_x, wind_and_waves_delta_y, \
+                wind_and_waves_delta_x, wind_and_waves_delta_t, \
+                wind_and_waves_delta_y_norm, \
+                wind_and_waves_delta_t_norm = tools.compute_error_metrics(buoy_final_location_x, 
+                                                                          buoy_final_location_y, 
+                                                                          true_track_time, 
+                                                                          wind_and_waves_track, 
+                                                                          surf_zone_width)
                 wind_and_waves_correct_final_x_all.append(wind_and_waves_correct_final_x)
                 wind_and_waves_delta_y_all.append(wind_and_waves_delta_y)
+                wind_and_waves_delta_y_all_norm.append(wind_and_waves_delta_y_norm)
                 wind_and_waves_delta_x_all.append(wind_and_waves_delta_x)
                 wind_and_waves_delta_t_all.append(wind_and_waves_delta_t)
+                wind_and_waves_delta_t_all_norm.append(wind_and_waves_delta_t_norm)
 
                 # Wind and Wave Error Metrics
-                wind_and_waves_and_surf_correct_final_x, wind_and_waves_and_surf_delta_y,\
-                wind_and_waves_and_surf_delta_x, wind_and_waves_and_surf_delta_t = tools.compute_error_metrics(buoy_final_location_x, buoy_final_location_y, true_track_time, wind_and_waves_and_surf_track)
+                wind_and_waves_and_surf_correct_final_x, \
+                wind_and_waves_and_surf_delta_y, \
+                wind_and_waves_and_surf_delta_x, \
+                wind_and_waves_and_surf_delta_t, \
+                wind_and_waves_and_surf_delta_y_norm, \
+                wind_and_waves_and_surf_delta_t_norm = tools.compute_error_metrics(buoy_final_location_x, 
+                                                                                   buoy_final_location_y, 
+                                                                                   true_track_time, 
+                                                                                   wind_and_waves_and_surf_track,
+                                                                                   surf_zone_width)
                 wind_and_waves_and_surf_correct_final_x_all.append(wind_and_waves_and_surf_correct_final_x)
                 wind_and_waves_and_surf_delta_y_all.append(wind_and_waves_and_surf_delta_y)
+                wind_and_waves_and_surf_delta_y_all_norm.append(wind_and_waves_and_surf_delta_y_norm)
                 wind_and_waves_and_surf_delta_x_all.append(wind_and_waves_and_surf_delta_x)
                 wind_and_waves_and_surf_delta_t_all.append(wind_and_waves_and_surf_delta_t)
+                wind_and_waves_and_surf_delta_t_all_norm.append(wind_and_waves_and_surf_delta_t_norm)
 
             # Skip the trajectory if it does not beach
             else:
@@ -537,23 +577,29 @@ def main():
         # Wind Only Metrics
         model_df['wind only correct final x'] = wind_only_correct_final_x_all
         model_df['wind only delta y'] = wind_only_delta_y_all
+        model_df['wind only delta y norm'] = wind_only_delta_y_all_norm
         model_df['wind only delta x'] = wind_only_delta_x_all
         model_df['wind only total distance'] = np.sqrt(np.array(wind_only_delta_x_all)**2 + np.array(wind_only_delta_y_all)**2)
         model_df['wind only delta t'] = wind_only_delta_t_all
+        model_df['wind only delta t norm'] = wind_only_delta_t_all_norm
 
         # Wind and Waves Metrics
         model_df['wind and waves correct final x'] = wind_and_waves_correct_final_x_all
         model_df['wind and waves delta y'] = wind_and_waves_delta_y_all
+        model_df['wind and waves delta y norm'] = wind_and_waves_delta_y_all_norm
         model_df['wind and waves delta x'] = wind_and_waves_delta_x_all
         model_df['wind and waves total distance'] = np.sqrt(np.array(wind_and_waves_delta_x_all)**2 + np.array(wind_and_waves_delta_y_all)**2)
         model_df['wind and waves delta t'] = wind_and_waves_delta_t_all
+        model_df['wind and waves delta t norm'] = wind_and_waves_delta_t_all_norm
 
         # Wind and Waves and Surfing Metrics
         model_df['wind and waves and surf correct final x'] = wind_and_waves_and_surf_correct_final_x_all
         model_df['wind and waves and surf delta y'] = wind_and_waves_and_surf_delta_y_all
+        model_df['wind and waves and surf delta y norm'] = wind_and_waves_and_surf_delta_y_all_norm
         model_df['wind and waves and surf delta x'] = wind_and_waves_and_surf_delta_x_all
         model_df['wind and waves and surf total distance'] = np.sqrt(np.array(wind_and_waves_and_surf_delta_x_all)**2 + np.array(wind_and_waves_and_surf_delta_y_all)**2)
         model_df['wind and waves and surf delta t'] = wind_and_waves_and_surf_delta_t_all
+        model_df['wind and waves and surf delta t norm'] = wind_and_waves_and_surf_delta_t_all_norm
 
         model_df.to_csv(f'./data/trajectory_model_error_metrics.csv')
 
