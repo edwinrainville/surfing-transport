@@ -173,16 +173,19 @@ def main():
                (wind_and_waves_delta_y_ci_high - wind_and_waves_delta_y_mean),
                (wind_waves_surf_delta_y_ci_high - wind_waves_surf_delta_y_mean)]
     bar1 = ax.bar(x_vals, error_mean, width, yerr=[ci_low, ci_high], capsize=5)
+    ax.tick_params(axis='both', which='major', labelsize=16)
     def normalize_delta_y(errors):
         return errors/mean_surf_zone_width
     
     def dimensional_delta_y(norm_errors):
         return norm_errors * mean_surf_zone_width
     ax2 = ax.secondary_yaxis('right', functions=(normalize_delta_y, dimensional_delta_y))
+    ax2.tick_params(axis='both', which='major', labelsize=16)
     # ax.legend(loc='upper right')
     # ax.set_title('Beached Successfully')
     # ax.set_ylabel('Absolute Along Shore Difference between Final Position [m]')
     plt.xticks(x_vals, x_ticks)
+    
     plt.show()
 
     print(error_mean/mean_surf_zone_width)
@@ -207,6 +210,7 @@ def main():
     ci_high = [(wind_only_delta_t_ci_high - wind_only_delta_t_mean), (wind_and_waves_delta_t_ci_high - wind_and_waves_delta_t_mean), (wind_waves_surf_delta_t_ci_high - wind_waves_surf_delta_t_mean)]
     
     bar1 = ax.bar(x_vals, error_mean, width, yerr=[ci_low, ci_high], capsize=5)
+    ax.tick_params(axis='both', which='major', labelsize=16)
     ax.axhline(0, color='k', linestyle='dashed', label='No Error')
 
     def normalize_delta_t(errors):
@@ -215,6 +219,7 @@ def main():
     def dimensional_delta_t(norm_errors):
         return norm_errors * mean_mission_length
     ax2 = ax.secondary_yaxis('right', functions=(normalize_delta_t, dimensional_delta_t))
+    ax2.tick_params(axis='both', which='major', labelsize=16)
     # ax.legend(loc='upper right')
     # ax.set_title('Beached Successfully')
     # ax.set_ylabel('Difference between time to beach [s]')

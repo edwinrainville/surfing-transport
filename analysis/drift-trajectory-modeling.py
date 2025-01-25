@@ -7,6 +7,7 @@ import netCDF4 as nc
 import math
 import pandas as pd
 from scipy import interpolate, optimize
+from scipy.interpolate import griddata
 import random
 
 import drift_trajectory_model_toolbox as tools
@@ -305,18 +306,115 @@ def plot_trajectories(fig, ax, trajectory, track_color, label):
 
     return ax
 
-def figure_setup(fig, ax, bathy_file, stokes_drift, wave_dir_FRF_mathconv, wind_speed, wind_dir_FRF_mathconv, surf_zone_edge, beach_edge):
+
+def extrapolate_2d_array(array, x_grid, y_grid, new_x_limits, new_y_limits):
+    """
+    Extrapolates a 2D array to new x and y limits using given 2D grids for x and y.
+    
+    Parameters:
+    - array (np.ndarray): The original 2D array.
+    - x_grid (np.ndarray): 2D array representing x-coordinates corresponding to the array.
+    - y_grid (np.ndarray): 2D array representing y-coordinates corresponding to the array.
+    - new_x_limits (tuple): New x-axis limits as (min, max).
+    - new_y_limits (tuple): New y-axis limits as (min, max).
+    
+    Returns:
+    - extrapolated_array (np.ndarray): Extrapolated 2D array.
+    - new_xx (np.ndarray): New 2D grid for x-coordinates.
+    - new_yy (np.ndarray): New 2D grid for y-coordinates.
+    """
+    
+    # Flatten the input grids and array
+    points = np.column_stack((x_grid.ravel(), y_grid.ravel()))
+    values = array.ravel()
+    
+    # Determine the new shape based on the scaling factor of the limits
+    x_scale = (new_x_limits[1] - new_x_limits[0]) / (x_grid.max() - x_grid.min())
+    y_scale = (new_y_limits[1] - new_y_limits[0]) / (y_grid.max() - y_grid.min())
+    
+    new_shape = (int(array.shape[0] * y_scale), int(array.shape[1] * x_scale))
+    
+    # Create new grid points
+    new_x = np.linspace(new_x_limits[0], new_x_limits[1], new_shape[1])
+    new_y = np.linspace(new_y_limits[0], new_y_limits[1], new_shape[0])
+    new_xx, new_yy = np.meshgrid(new_x, new_y)
+    new_points = np.column_stack((new_xx.ravel(), new_yy.ravel()))
+    
+    # Interpolate to new grid
+    extrapolated_values = griddata(points, values, new_points, method='linear', fill_value=np.nan)
+    
+    # Reshape the extrapolated values to the new grid shape
+    extrapolated_array = extrapolated_values.reshape(new_shape)
+    
+    return extrapolated_array, new_xx, new_yy
+
+def figure_setup(fig, ax, bathy_file, stokes_drift, wave_dir_FRF_mathconv, wind_speed, wind_dir_FRF_mathconv, surf_zone_edge, beach_edge, xlims, ylims):
     """
     
     """
     # Bathymetry
     bathy_dataset = nc.Dataset(bathy_file)
     x, y = np.meshgrid(bathy_dataset['xFRF'][:],bathy_dataset['yFRF'][:])
+    xFRF = bathy_dataset['xFRF'][:]
+    yFRF = bathy_dataset['yFRF'][:]
     bathy = bathy_dataset['elevation'][0,:,:]
     bathy_dataset.close()
-    bathy_positive = np.ma.masked_where(bathy < 0, bathy)
-    im = ax.contourf(x, y, bathy, cmap=cmocean.cm.deep_r)
-    contourf_positive = ax.contourf(x, y, bathy_positive, colors=['orange'])
+
+    # Extrapolate the bahtymetry
+    x_cgrid_size = 1 # units are meters
+    y_cgrid_size = 1 # units are meters
+
+    # Define grid edges
+    x_cgrid_min = 50
+    x_cgrid_max = 950
+    y_cgrid_min = 100
+    y_cgrid_max = 1000
+
+    # Define number of points based on grid size
+    num_x_points = int((x_cgrid_max - x_cgrid_min) / x_cgrid_size)
+    num_y_points = int((y_cgrid_max - y_cgrid_min) / y_cgrid_size)
+
+    # Create mesh grid
+    x_cgrid, y_cgrid = np.meshgrid(np.linspace(x_cgrid_min, x_cgrid_max, num_x_points),
+                                np.linspace(y_cgrid_min, y_cgrid_max, num_y_points))
+    
+    # Regrid the Bathymetry so it fits in the new grid
+    elevation_regridded = interpolate.interpn((xFRF, yFRF), bathy.T, 
+                                              (x_cgrid, y_cgrid), 
+                                              method='linear', fill_value=0)
+
+   # Define grid edges
+    x_cgrid_min = 50
+    x_cgrid_max = 950
+    y_cgrid_min = -1200
+    y_cgrid_max = 1800
+
+    # Define number of points based on grid size
+    num_x_points = int((x_cgrid_max - x_cgrid_min) / x_cgrid_size)
+    num_y_points = int((y_cgrid_max - y_cgrid_min) / y_cgrid_size)
+
+    # Create extrapolated x and y grids
+    x_extrapolated, y_extrapolated = np.meshgrid(np.linspace(x_cgrid_min, x_cgrid_max, num_x_points),
+                                np.linspace(y_cgrid_min, y_cgrid_max, num_y_points))
+    
+    extrapolated_bathy = np.zeros(x_extrapolated.shape)
+
+    # Fill in expanded value with original points
+    extrapolated_bathy[1300:2200, :900] = elevation_regridded
+
+    # Expand the bathymetry South the the last profile 
+    for n in range(1300):
+        extrapolated_bathy[n, :] = elevation_regridded[0,:]
+
+    # Expand the bathymetry South the the last profile 
+    for n in range(3000-2200):
+        extrapolated_bathy[2999-n, :] = elevation_regridded[-1,:]
+
+    bathy_positive = np.ma.masked_where(extrapolated_bathy < 0, extrapolated_bathy)
+
+    # im = ax.contourf(x, y, bathy, cmap=cmocean.cm.deep_r)
+    im = ax.contourf(x_extrapolated, y_extrapolated, extrapolated_bathy, cmap=cmocean.cm.deep_r)
+    contourf_positive = ax.contourf(x_extrapolated, y_extrapolated, bathy_positive, colors=['orange'])
     cbar = fig.colorbar(im)
     cbar.ax.set_ylabel('Elevation, z [m]', fontsize=15)
 
@@ -478,8 +576,14 @@ def main():
                 fig, ax = plt.subplots(figsize=(10,10))
                 
                 # Set up the figure
+                # xlims = (np.min([np.min(windonly_track[0]), np.min(wind_and_waves_track[0]), np.min(wind_and_waves_and_surf_track[0])]),
+                #          np.max([np.min(windonly_track[0]), np.max(wind_and_waves_track[0]), np.max(wind_and_waves_and_surf_track[0])]))
+                # ylims = (np.min([np.min(windonly_track[1]), np.min(wind_and_waves_track[1]), np.min(wind_and_waves_and_surf_track[1])]),
+                #          np.max([np.min(windonly_track[1]), np.max(wind_and_waves_track[1]), np.max(wind_and_waves_and_surf_track[1])]))
+                xlims = (0, 800)
+                ylims = (-1500, 1500)
                 figure_setup(fig, ax, bathy_file, stokes_drift, wave_dir_FRF_mathconv, 
-                            wind_speed, wind_dir_FRF_mathconv, x_br, x_beach)
+                            wind_speed, wind_dir_FRF_mathconv, x_br, x_beach, xlims, ylims)
 
                 # Plot True Trajectory
                 ax = plot_trajectories(fig=fig, ax=ax, 
