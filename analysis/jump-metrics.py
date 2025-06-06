@@ -1,7 +1,12 @@
 import numpy as np
+import netCDF4 as nc
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.ticker import MaxNLocator
+from matplotlib.ticker import MaxNLocator, ScalarFormatter
+from scipy import stats
+from matplotlib.colors import LogNorm
+
+import drift_trajectory_model_toolbox as tools
 
 def create_vertical_boxplots(x, y, bins=10, min=None, max=None, xlabel='Bin Center', ylabel='Y Values', percent_ylabel='Percent of Total Data'):
     """
@@ -99,8 +104,8 @@ def binned_statistics(x, y, bins=10, statistic='median'):
     """
     
     # Validate the statistic parameter
-    if statistic not in ['mean', 'median']:
-        raise ValueError("Statistic must be 'mean' or 'median'.")
+    if statistic not in ['mean', 'median', 'variance']:
+        raise ValueError("Statistic must be 'mean', 'median', or 'variance'.")
 
     # Create bins
     bin_edges = np.linspace(np.min(x), np.max(x), bins + 1)
@@ -111,90 +116,331 @@ def binned_statistics(x, y, bins=10, statistic='median'):
 
     # Calculate the specified statistic for each bin
     if statistic == 'mean':
-        statistics = [np.mean(y[binned_indices == i]) for i in range(1, bins + 1)]
+        statistics = [np.nanmean(y[binned_indices == i]) for i in range(1, bins + 1)]
     elif statistic == 'median':
-        statistics = [np.median(y[binned_indices == i]) for i in range(1, bins + 1)]
+        statistics = [np.nanmedian(y[binned_indices == i]) for i in range(1, bins + 1)]
+    elif statistic == 'variance':
+        statistics = [np.nanvar(y[binned_indices == i]) for i in range(1, bins + 1)]
     
+    # Compute std for each bin
+    std_in_bin = [np.nanstd(y[binned_indices == i]) for i in range(1, bins + 1)]
+
+    # Check Normal Distribution Goodness of Fit Test for each bin
+    
+    # Remove NaN values from the 
+
     # Count the number of data points for each bin
     counts = [np.sum(binned_indices == i) for i in range(1, bins + 1)]
 
-    return bin_centers, statistics, counts
+    return np.array(bin_centers), np.array(statistics), np.array(counts), np.array(std_in_bin)
 
 def main():
     # Load the jump dataframe 
-    fname = './data/jump_df_threshold0.5_manually_checked.csv'
+    # fname = './data/jump_df_threshold0.5_manually_checked.csv'
+    # fname = './data/jump_df_threshold0.5.csv'
+    fname = './data/jump_df_threshold1.csv'
     jump_df = pd.read_csv(fname)
 
     print(f'Number of Jumps: {len(jump_df)}')
+    print(f'Max Surf Duration Normalized = {np.max(jump_df['normalized jump time [-]'])} ')
+    print(f'Min Surf Duration Normalized = {np.min(jump_df['normalized jump time [-]'])} ')
+    print(f'Median Surf Duration Normalized = {np.median(jump_df['normalized jump time [-]'])} ')
+    print(f'+1 STD Surf Duration Normalized = {np.median(jump_df['normalized jump time [-]']) + np.std(jump_df['normalized jump time [-]'])})')
+    print(f'-1 STD Surf Duration Normalized = {np.median(jump_df['normalized jump time [-]']) - np.std(jump_df['normalized jump time [-]'])}')
 
-    # # 2d Histogram of the Dimensional Jump Metrics
-    # fig, ax = plt.subplots()
-    # _, _, _, im = ax.hist2d(jump_df['jump time [s]'], jump_df['jump amplitude [m]'], bins=(100, 100), cmap='inferno', cmin=2, density=False)
-    # cbar = fig.colorbar(im, ax=ax)
-    # cbar.set_label('Number of Jumps [-]')
-    # ax.axvline(np.median(jump_df['jump time [s]']), color='k', linestyle='dashed', label=f'Median Jump Duration, {np.round(np.median(jump_df['jump time [s]']), 2)} seconds')
-    # ax.axhline(np.median(jump_df['jump amplitude [m]']), color='k', label=f'Median Jump Amplitude, {np.round(np.median(jump_df['jump amplitude [m]']), 2)} meters')
+    # 2d Histogram of the Dimensional Jump Metrics
+    fig, ax = plt.subplots()
+    _, _, _, im = ax.hist2d(jump_df['jump time [s]'], jump_df['jump amplitude [m]'], bins=(100, 100), cmap='inferno', cmin=2, density=False, norm=LogNorm())
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label('log(Number of Jumps) [-]')
+    ax.axvline(np.median(jump_df['jump time [s]']), color='k', linestyle='dashed', label=f'Median Jump Duration, {np.round(np.median(jump_df['jump time [s]']), 2)} seconds')
+    ax.axhline(np.median(jump_df['jump amplitude [m]']), color='k', label=f'Median Jump Amplitude, {np.round(np.median(jump_df['jump amplitude [m]']), 2)} meters')
     # ax.set_xlabel('Jump Duration, $J_D$ [s]')
     # ax.set_ylabel('Jump Amplitude, $J_A$ [m]')
-    # ax.legend()
-    # ax.set_xlim(0, 35)
-    # ax.set_ylim(0, 90)
-    # plt.show()
+    ax.legend()
+    ax.set_xlim(0, 35)
+    ax.set_ylim(0, 90)
+    plt.show()
 
-    # # 2d Histogram of the Normalized Jump Metrics
-    # fig, ax = plt.subplots()
-    # _, _, _, im = ax.hist2d(jump_df['normalized jump time [-]'], jump_df['normalized jump amplitude [-]'], bins=(100, 100), cmap='inferno', cmin=0.25, density=True)
-    # cbar = fig.colorbar(im, ax=ax)
-    # cbar.set_label('Probability Density [-]')
-    # ax.axvline(np.median(jump_df['normalized jump time [-]']), color='k', linestyle='dashed', label=f'Median Jump Duration, {np.round(np.median(jump_df['normalized jump time [-]']), 2)} Wave Periods')
-    # ax.axhline(np.median(jump_df['normalized jump amplitude [-]']), color='k', label=f'Median Jump Amplitude, {np.round(np.median(jump_df['normalized jump amplitude [-]']), 2)} Wavelengths')
+    # 2d Histogram of the Normalized Jump Metrics
+    fig, ax = plt.subplots()
+    _, _, _, im = ax.hist2d(jump_df['normalized jump time [-]'], jump_df['normalized jump amplitude [-]'], bins=(100, 100), cmap='inferno', cmin=0.25, density=True, norm=LogNorm())
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label('log(Probability Density) [-]')
+    ax.axvline(np.median(jump_df['normalized jump time [-]']), color='k', linestyle='dashed', label=f'Median Jump Duration, {np.round(np.median(jump_df['normalized jump time [-]']), 2)} Wave Periods')
+    ax.axhline(np.median(jump_df['normalized jump amplitude [-]']), color='k', label=f'Median Jump Amplitude, {np.round(np.median(jump_df['normalized jump amplitude [-]']), 2)} Wavelengths')
     # ax.set_xlabel('Jump Duration, $J_D$ [s]')
     # ax.set_ylabel('Jump Amplitude, $J_A$ [m]')
-    # ax.set_xlim(0, 4.2)
-    # ax.set_ylim(0, 1.5)
-    # ax.legend()
-    # plt.show()
+    ax.set_xlim(0, 4.2)
+    ax.set_ylim(0, 1.5)
+    ax.legend()
+    plt.show()
+
+    fig, ax = plt.subplots(figsize=(14,8))
+    ax.hist(jump_df['normalized jump time [-]'], bins=100, density=True, cumulative=False, 
+            histtype='stepfilled', color='k', alpha=0.5)
+    # ax.hist(jump_df['jump speed bulk total mag [m/s]']/jump_df['linear phase speed at jump depth [m/s]'], bins=100, density=True, cumulative=False,
+    #          histtype='stepfilled', color='blue', alpha=0.5, label='$J_{s,bulk}$')
+    # ax.axvline(np.mean(jump_df['jump speed max total mag [m/s]']/jump_df['linear phase speed at jump depth [m/s]']), color='k', linestyle='dashed', linewidth=5,
+    #            label='Median($J_{s, max}$) = 1.42')
+    # ax.axvline(np.mean(jump_df['jump speed bulk total mag [m/s]']/jump_df['linear phase speed at jump depth [m/s]']), color='blue', linestyle='dashed', linewidth=5,
+    #            label='Median($J_{s,bulk}$) = 0.55')
+    # ax.axvline(1.3, color='k', linestyle='solid', linewidth=5, label='Bore Speed, 1.3 \n (Schaffer et al. 1993)')
+    ax.set_xlabel('J_D [s]')
+    ax.set_ylabel('Probability Density')
+    # ax.set_xscale('log')
+    ax.legend(fontsize=20)
+    ax.tick_params(axis='both', labelsize=20)
+    # ax.set_xticks([0.4, 0.6, 1, 4, 6])
+    # ax.set_xticks([0.5, 1, 5])
+    # ax.get_xaxis().set_major_formatter(ScalarFormatter())
+    plt.show()
 
     # ---------------- JUMP SPEED PLOTS ----------------------
-    # DIMENSIONAL
-    depths = np.linspace(0, 8, 100)
-    fig, ax = plt.subplots(figsize=(8,6))
-    _, _, _, im = ax.hist2d(jump_df['jump depth [m]'], 
-                            jump_df['max jump speed [m/s]'], 
-                            bins=(100, 100), cmap='inferno', cmin=3, density=False)
-    cbar = fig.colorbar(im, ax=ax)
-    cbar.ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-    ax.plot(depths, np.sqrt(9.8 * depths), color='c', linewidth=3, linestyle='dashed', label='Linear Phase Speed in Shallow Water, $\sqrt{gd}$')
-    ax.plot(depths, 0.72*np.sqrt(9.8 * depths), color='c', linewidth=3, linestyle='dotted', label='Median Jump Speed ($0.72\sqrt{gd}$)')
-    ax.plot(depths, 0.5 * np.sqrt(9.8 * depths), color='c', linewidth=3, label='Jump Speed Threshold, $u_{th} = 0.5\sqrt{gd}$)')
-    # ax.set_xlabel('Average Depth of Jump, d [m]')
-    # ax.set_ylabel('Maximum Speed During Jump [m/s]')
-    # cbar.set_label('Number of Jumps[-]')
-    ax.set_xlim(0, 5)
-    ax.set_ylim(0, 8)
-    ax.legend(loc='lower right')
-    ax.tick_params(axis='both', labelsize=16)
+    # # DIMENSIONAL
+    # depths = np.linspace(0, 8, 100)
+    # fig, ax = plt.subplots(figsize=(8,6))
+    # _, _, _, im = ax.hist2d(jump_df['jump depth [m]'], 
+    #                         jump_df['max jump speed [m/s]'], 
+    #                         bins=(100, 100), cmap='inferno', cmin=3, density=False)
+    # cbar = fig.colorbar(im, ax=ax)
+    # cbar.ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    # ax.plot(depths, np.sqrt(9.8 * depths), color='c', linewidth=3, linestyle='dashed', label='Linear Phase Speed in Shallow Water, $\sqrt{gd}$')
+    # ax.plot(depths, 0.72*np.sqrt(9.8 * depths), color='c', linewidth=3, linestyle='dotted', label='Median Jump Speed ($0.72\sqrt{gd}$)')
+    # ax.plot(depths, 0.5 * np.sqrt(9.8 * depths), color='c', linewidth=3, label='Jump Speed Threshold, $u_{th} = 0.5\sqrt{gd}$)')
+    # # ax.set_xlabel('Average Depth of Jump, d [m]')
+    # # ax.set_ylabel('Maximum Speed During Jump [m/s]')
+    # # cbar.set_label('Number of Jumps[-]')
+    # ax.set_xlim(0, 5)
+    # ax.set_ylim(0, 8)
+    # ax.legend(loc='lower right')
+    # ax.tick_params(axis='both', labelsize=16)
+    # plt.show()
+
+    # # DIMENSIONAL - total mag max
+    # depths = np.linspace(0, 8, 100)
+    # fig, ax = plt.subplots(figsize=(8,6))
+    # _, _, _, im = ax.hist2d(jump_df['jump depth [m]'], 
+    #                         jump_df['jump speed max total mag [m/s]'], 
+    #                         bins=(100, 100), cmap='inferno', cmin=3, density=False)
+    # cbar = fig.colorbar(im, ax=ax)
+    # cbar.ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    # ax.plot(depths, np.sqrt(9.8 * depths), color='c', linewidth=3, linestyle='dashed', label='Linear Phase Speed in Shallow Water, $\sqrt{gd}$')
+    # ax.plot(depths, 0.72*np.sqrt(9.8 * depths), color='c', linewidth=3, linestyle='dotted', label='Median Jump Speed ($0.72\sqrt{gd}$)')
+    # ax.plot(depths, 0.5 * np.sqrt(9.8 * depths), color='c', linewidth=3, label='Jump Speed Threshold, $u_{th} = 0.5\sqrt{gd}$)')
+    # # ax.set_xlabel('Average Depth of Jump, d [m]')
+    # # ax.set_ylabel('Maximum Speed During Jump [m/s]')
+    # # cbar.set_label('Number of Jumps[-]')
+    # # ax.set_xlim(0, 5)
+    # # ax.set_ylim(0, 8)
+    # ax.legend(loc='lower right')
+    # ax.tick_params(axis='both', labelsize=16)
+    # ax.set_title('bulk total mag')
+    # plt.show()
+
+    # # DIMENSIONAL - total mag max
+    # depths = np.linspace(0, 8, 100)
+    # fig, ax = plt.subplots(figsize=(8,6))
+    # _, _, _, im = ax.hist2d(jump_df['jump depth [m]'], 
+    #                         jump_df['jump speed max total mag [m/s]'], 
+    #                         bins=(100, 100), cmap='inferno', cmin=3, density=False)
+    # cbar = fig.colorbar(im, ax=ax)
+    # cbar.ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    # ax.plot(depths, np.sqrt(9.8 * depths), color='c', linewidth=3, linestyle='dashed', label='Linear Phase Speed in Shallow Water, $\sqrt{gd}$')
+    # ax.plot(depths, 0.72*np.sqrt(9.8 * depths), color='c', linewidth=3, linestyle='dotted', label='Median Jump Speed ($0.72\sqrt{gd}$)')
+    # ax.plot(depths, 0.5 * np.sqrt(9.8 * depths), color='c', linewidth=3, label='Jump Speed Threshold, $u_{th} = 0.5\sqrt{gd}$)')
+    # # ax.set_xlabel('Average Depth of Jump, d [m]')
+    # # ax.set_ylabel('Maximum Speed During Jump [m/s]')
+    # # cbar.set_label('Number of Jumps[-]')
+    # # ax.set_xlim(0, 5)
+    # # ax.set_ylim(0, 8)
+    # ax.legend(loc='lower right')
+    # ax.tick_params(axis='both', labelsize=16)
+    # ax.set_title('bulk total mag')
+    # plt.show()
+
+    # fig, ax = plt.subplots()
+    # ax.scatter(jump_df['jump depth [m]'], 
+    #            jump_df['jump speed max total mag [m/s]'])
+    # ax.plot(depths, np.sqrt(9.8 * depths), color='c', linewidth=3, linestyle='dashed', label='Linear Phase Speed in Shallow Water, $\sqrt{gd}$')
+    # ax.plot(depths, 0.72*np.sqrt(9.8 * depths), color='c', linewidth=3, linestyle='dotted', label='Median Jump Speed ($0.72\sqrt{gd}$)')
+    # ax.plot(depths, 0.5 * np.sqrt(9.8 * depths), color='c', linewidth=3, label='Jump Speed Threshold, $u_{th} = 0.5\sqrt{gd}$)')
+    # ax.legend(loc='lower right')
+    # ax.tick_params(axis='both', labelsize=16)
+    # ax.set_title('bulk total mag')
+    # plt.show()
+
+    # bin_num = 10
+    # c_bin_avg, \
+    # jump_speed_bin_avg, \
+    # jump_speed_bin_count, jump_speed_std_in_bin = binned_statistics(jump_df['linear phase speed at jump depth [m/s]'], 
+    #                                                                 jump_df['jump speed max total mag [m/s]'], 
+    #                                                                 bins=bin_num, statistic='mean')
+    # fig, ax = plt.subplots(figsize=(10,10))
+    # ax.scatter(jump_df['linear phase speed at jump depth [m/s]'], 
+    #            jump_df['jump speed max total mag [m/s]'], color='gray', alpha=0.5, s=8)
+    # ax.errorbar(c_bin_avg, jump_speed_bin_avg, jump_speed_std_in_bin, fmt='o', linestyle='none', 
+    #         capsize=3, label='Mean $\pm$ 1 Standard Deviation', color='r', markersize=10)
+    # # ax.set_xlabel('c')
+    # # ax.set_ylabel('jump speed [m/s]')
+    # ax.set_xlim(0, 8)
+    # ax.set_ylim(0, 17)
+    # ax.plot([0, 15], [0,15], color='k', label='one-to-one line')
+    # # Fit a curve to the jump speed data
+    # slope_speed, intercept_speed, r, p, se = stats.linregress(c_bin_avg, jump_speed_bin_avg)
+    # ax.plot(np.linspace(0, 8), (slope_speed * np.linspace(0,8)) + intercept_speed, color='k', linestyle='dashed', label=f'Linear Fit, $J_s = {np.round(slope_speed,3)}c + {np.round(intercept_speed, 3)}$')
+    # ax.plot(np.linspace(0,8), (1.3*np.linspace(0,8)), color='b', label='1.3c (Schaffer et al. 1993)')
+    # ax.tick_params(axis='both', labelsize=20)
+    # # ax.set_aspect('equal')
+    # ax.legend(loc='lower right', fontsize=16)
+    # plt.show()
+
+    # bin_num = 10
+    # c_bin_avg, \
+    # jump_speed_bulk_bin_avg, \
+    # jump_speed_bin_count, jump_speed_bulk_std_in_bin = binned_statistics(jump_df['linear phase speed at jump depth [m/s]'], 
+    #                                                                 jump_df['jump speed bulk total mag [m/s]'], 
+    #                                                                 bins=bin_num, statistic='mean')
+    # fig, ax = plt.subplots(figsize=(10,10))
+    # ax.scatter(jump_df['linear phase speed at jump depth [m/s]'], 
+    #            jump_df['jump speed bulk total mag [m/s]'], color='gray', alpha=0.5, s=8)
+    # ax.errorbar(c_bin_avg, jump_speed_bulk_bin_avg, jump_speed_bulk_std_in_bin, fmt='o', linestyle='none', 
+    #         capsize=3, label='Mean $\pm$ 1 Standard Deviation', color='r', markersize=10)
+    # # ax.set_xlabel('c')
+    # # ax.set_ylabel('jump speed [m/s]')
+    # # ax.set_xlim(0, 8)
+    # # ax.set_ylim(0, 17)
+    # ax.plot([0, 15], [0,15], color='k', label='one-to-one line')
+    # # Fit a curve to the jump speed data
+    # slope_speed, intercept_speed, r, p, se = stats.linregress(c_bin_avg, jump_speed_bulk_bin_avg)
+    # ax.plot(np.linspace(0, 8), (slope_speed * np.linspace(0,8)) + intercept_speed, color='k', linestyle='dashed', label=f'Linear Fit, $J_s = {np.round(slope_speed,3)}c + {np.round(intercept_speed, 3)}$')
+    # ax.tick_params(axis='both', labelsize=20)
+    # ax.set_aspect('equal')
+    # ax.legend(loc='lower right', fontsize=16)
+    # plt.show()
+
+    # fig, ax = plt.subplots(figsize=(10,10))
+    # ax.scatter(jump_df['linear phase speed at jump depth [m/s]'], 
+    #            jump_df['mean jump speed [m/s]'], color='gray', alpha=0.5, s=8)
+    # # ax.errorbar(c_bin_avg, jump_speed_bin_avg, jump_speed_std_in_bin, fmt='o', linestyle='none', 
+    #         # capsize=3, label='Mean $\pm$ 1 Standard Deviation', color='r', markersize=10)
+    # # ax.set_xlabel('c')
+    # # ax.set_ylabel('jump speed [m/s]')
+    # # ax.set_xlim(0, 8)
+    # # ax.set_ylim(0, 17)
+    # ax.plot([0, 15], [0,15], color='k', label='one-to-one line')
+    # # Fit a curve to the jump speed data
+    # # slope_speed, intercept_speed, r, p, se = stats.linregress(c_bin_avg, jump_speed_bin_avg)
+    # # ax.plot(np.linspace(0, 8), (slope_speed * np.linspace(0,8)) + intercept_speed, color='k', linestyle='dashed', label=f'Linear Fit, $J_s = {np.round(slope_speed,3)}c + {np.round(intercept_speed, 3)}$')
+    # ax.tick_params(axis='both', labelsize=20)
+    # ax.set_aspect('equal')
+    # ax.legend(loc='lower right', fontsize=16)
+    # plt.show()
+
+    # Historgrams of normalized jump speed - max and bulk
+    median_max_speed = np.median(jump_df['jump speed max total mag [m/s]']/jump_df['linear phase speed at jump depth [m/s]'])
+    print(median_max_speed)
+    median_bulk_speed = np.median(jump_df['jump speed bulk total mag [m/s]']/jump_df['linear phase speed at jump depth [m/s]'])
+    print(median_bulk_speed)
+    fig, ax = plt.subplots(figsize=(14,8))
+    ax.hist(jump_df['jump speed max total mag [m/s]']/jump_df['linear phase speed at jump depth [m/s]'], bins=100, density=True, cumulative=False, 
+            histtype='stepfilled', color='k', alpha=0.5, label='$J_{s,max}$')
+    ax.hist(jump_df['jump speed bulk total mag [m/s]']/jump_df['linear phase speed at jump depth [m/s]'], bins=100, density=True, cumulative=False,
+             histtype='stepfilled', color='blue', alpha=0.5, label='$J_{s,bulk}$')
+    ax.axvline(np.median(jump_df['jump speed max total mag [m/s]']/jump_df['linear phase speed at jump depth [m/s]']), color='k', linestyle='dashed', linewidth=5,
+               label='Median($J_{s, max}$) = 1.44')
+    ax.axvline(np.median(jump_df['jump speed bulk total mag [m/s]']/jump_df['linear phase speed at jump depth [m/s]']), color='blue', linestyle='dashed', linewidth=5,
+               label='Median($J_{s,bulk}$) = 0.82')
+    ax.axvline(1.3, color='k', linestyle='solid', linewidth=5, label='Bore Speed, 1.3 \n (Schaffer et al. 1993)')
+    # ax.set_xlabel('J_s / c')
+    # ax.set_ylabel('Probability Density')
+    ax.set_xscale('log')
+    ax.legend(fontsize=20)
+    ax.tick_params(axis='both', labelsize=20)
+    ax.set_xticks([0.4, 0.6, 1, 4, 6])
+    # ax.set_xticks([0.5, 1, 5])
+    ax.get_xaxis().set_major_formatter(ScalarFormatter())
     plt.show()
 
-    # NORMALIZED
-    fig, ax = plt.subplots(figsize=(8,6))
-    _, _, _, im = ax.hist2d(jump_df['jump depth [m]']/jump_df['Offshore Hs [m]'], 
-                            jump_df['max jump speed [m/s]']/np.sqrt(9.8 * jump_df['jump depth [m]']), 
-                            bins=(100, 100), cmap='inferno', cmin=0.1, density=True)
-    cbar = fig.colorbar(im, ax=ax)
-    # cbar.ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-    median_jump_speed_norm = np.median(jump_df['max jump speed [m/s]']/np.sqrt(9.8 * jump_df['jump depth [m]']))
-    ax.axhline(median_jump_speed_norm, color='c', linewidth=3, linestyle='dotted', label='Median Jump Speed ($0.72\sqrt{gd}$)')
-    ax.axhline(1, color='c', linewidth=3, linestyle='dashed', label='Linear Phase Speed in Shallow Water, $\sqrt{gd}$')
-    ax.axhline(0.5, color='c', linewidth=3, label='Jump Speed Threshold, $u_{th} = 0.5\sqrt{gd}$)')
-    # ax.set_xlabel('Normalized Average Jump Depth, d/Hs [-]')
-    # ax.set_ylabel('Normalized Maximum Speed During Jump, J_s/c [-]')
-    # cbar.set_label('Probability Density [-]')
-    ax.set_xlim(0, 4)
-    ax.set_ylim(0, 3.5)
-    ax.legend(loc='upper right')
-    ax.tick_params(axis='both', labelsize=16)
-    plt.show()
+    print(f'max jump speed skew = {stats.skew(jump_df['jump speed max total mag [m/s]']/jump_df['linear phase speed at jump depth [m/s]'])}')
+    print(f'bulk jump speed skew = {stats.skew(jump_df['jump speed bulk total mag [m/s]']/jump_df['linear phase speed at jump depth [m/s]'])}')
+
+    # # Historgrams of normalized jump speed - max and bulk
+    # fig, ax = plt.subplots()
+    # ax.hist(jump_df['jump speed bulk total mag [m/s]']/jump_df['linear phase speed at jump depth [m/s]'], bins=100, density=True, cumulative=False, histtype='stepfilled', color='gray')
+    # ax.axvline(np.mean(jump_df['jump speed bulk total mag [m/s]']/jump_df['linear phase speed at jump depth [m/s]']), color='k', linestyle='dashdot',
+    #            label=f'Mean Value = {np.round(np.mean(jump_df['jump speed bulk total mag [m/s]']/jump_df['linear phase speed at jump depth [m/s]']), 2)}')
+    # ax.axvline(np.median(jump_df['jump speed bulk total mag [m/s]']/jump_df['linear phase speed at jump depth [m/s]']), color='k', linestyle='dotted',
+    #            label=f'Median Value = {np.round(np.median(jump_df['jump speed bulk total mag [m/s]']/jump_df['linear phase speed at jump depth [m/s]']), 2)}')
+    # ax.axvline(1.3, color='k', linestyle='dashed', label='1.3c')
+    # ax.set_xlabel('J_sbulk / c')
+    # ax.set_ylabel('Probability Density')
+    # ax.set_xscale('log')
+    # ax.legend()
+    # plt.show()
+
+
+
+    # bin_num = 10
+    # depth_bin_avg, \
+    # jump_speed_norm_bin_avg, \
+    # jump_speed_bin_count, jump_speed_norm_std_in_bin = binned_statistics(jump_df['jump depth [m]']/jump_df['Offshore Hs [m]'], 
+    #                                                                 jump_df['jump speed max total mag [m/s]']/jump_df['linear phase speed at jump depth [m/s]'], 
+    #                                                                 bins=bin_num, statistic='mean')
+    # # Fit a curve to the jump speed data
+    # slope, intercept, r, p, se = stats.linregress(depth_bin_avg, jump_speed_norm_bin_avg)
+    
+    # fig, ax = plt.subplots(figsize=(10,10))
+    # ax.scatter(jump_df['jump depth [m]']/jump_df['Offshore Hs [m]'], 
+    #            jump_df['jump speed max total mag [m/s]']/jump_df['linear phase speed at jump depth [m/s]'], color='gray', alpha=0.5, s=8)
+    # ax.errorbar(depth_bin_avg, jump_speed_norm_bin_avg, jump_speed_norm_std_in_bin, fmt='o', linestyle='none', 
+    #         capsize=3, label='Mean $\pm$ 1 Standard Deviation', color='r', ms=10)
+    # ax.plot(np.linspace(0, 5), (slope * np.linspace(0,5)) + intercept, color='k', linestyle='dashed', label=f'Linear Fit, $J_s/c = {np.round(slope,3)}(d/H_s) + {np.round(intercept, 3)}$')
+    # ax.axhline(1, color='k', label='Linear Phase Speed, c')
+    # # ax.set_xlabel('d/Hs [-]')
+    # # ax.set_ylabel('jump speed/c [-]')
+    # ax.tick_params(axis='both', labelsize=20)
+    # ax.legend(loc='upper right', fontsize=16)
+    # plt.show()
+
+
+    # bin_num = 10
+    # c_bin_avg, \
+    # jump_speed_bin_avg, \
+    # jump_speed_bin_count, jump_speed_std_in_bin = binned_statistics(jump_df['linear phase speed at jump depth [m/s]'], 
+    #                                                                 jump_df['jump speed bulk total mag [m/s]'], 
+    #                                                                 bins=bin_num, statistic='mean')
+    # fig, ax = plt.subplots()
+    # ax.scatter(jump_df['linear phase speed at jump depth [m/s]'], 
+    #            jump_df['jump speed bulk total mag [m/s]'], color='gray', alpha=0.5)
+    # ax.errorbar(c_bin_avg, jump_speed_bin_avg, jump_speed_std_in_bin, fmt='o', linestyle='none', 
+    #         capsize=3, label='Mean $\pm$ 1 Standard Deviation', color='r')
+    # ax.set_xlabel('c')
+    # ax.set_ylabel('jump speed bulk [m/s]')
+    # ax.set_xlim(0, 17)
+    # ax.set_ylim(0, 17)
+    # ax.plot([0, 15], [0,15])
+    # plt.show()
+
+    # # NORMALIZED
+    # fig, ax = plt.subplots(figsize=(8,6))
+    # _, _, _, im = ax.hist2d(jump_df['jump depth [m]']/jump_df['Offshore Hs [m]'], 
+    #                         jump_df['max jump speed [m/s]']/np.sqrt(9.8 * jump_df['jump depth [m]']), 
+    #                         bins=(100, 100), cmap='inferno', cmin=0.1, density=True)
+    # cbar = fig.colorbar(im, ax=ax)
+    # # cbar.ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    # median_jump_speed_norm = np.median(jump_df['max jump speed [m/s]']/np.sqrt(9.8 * jump_df['jump depth [m]']))
+    # ax.axhline(median_jump_speed_norm, color='c', linewidth=3, linestyle='dotted', label='Median Jump Speed ($0.72\sqrt{gd}$)')
+    # ax.axhline(1, color='c', linewidth=3, linestyle='dashed', label='Linear Phase Speed in Shallow Water, $\sqrt{gd}$')
+    # ax.axhline(0.5, color='c', linewidth=3, label='Jump Speed Threshold, $u_{th} = 0.5\sqrt{gd}$)')
+    # # ax.set_xlabel('Normalized Average Jump Depth, d/Hs [-]')
+    # # ax.set_ylabel('Normalized Maximum Speed During Jump, J_s/c [-]')
+    # # cbar.set_label('Probability Density [-]')
+    # ax.set_xlim(0, 4)
+    # ax.set_ylim(0, 3.5)
+    # ax.legend(loc='upper right')
+    # ax.tick_params(axis='both', labelsize=16)
+    # plt.show()
 
 
     # # ---------------- CROSS SHORE LOCATION OF JUMPS PLOTS ----------------------
@@ -212,22 +458,95 @@ def main():
     # ax.legend()
     # plt.show()
 
-    # NORMALIZED
-    fig, ax = plt.subplots()
-    _, _, _, im = ax.hist2d(jump_df['normalized cross shore jump location [-]'], jump_df['normalized jump amplitude [-]'], bins=(100, 100), cmap='inferno', cmin=2, density=True)
-    cbar = fig.colorbar(im, ax=ax)
-    cbar.ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-    ax.axvline(1, color='k', linestyle='dashed', label='Surf Zone Edge, $\gamma = 0.35$')
-    # cbar.set_label('Probability Density [-]')
-    # ax.set_xlabel('Normalized Jump Location, $x/L_{sz}$ [-]')
-    # ax.set_ylabel('Normalized Jump Amplitude, $J_A/\lambda$ [-]')
-    ax.set_xlim(0.25, 1.5)
-    ax.set_ylim(0, 1)
-    ax.legend()
-    ax.tick_params(axis='both', labelsize=16)
+    # # NORMALIZED
+    # fig, ax = plt.subplots()
+    # _, _, _, im = ax.hist2d(jump_df['normalized cross shore jump location [-]'], jump_df['normalized jump amplitude [-]'], bins=(100, 100), cmap='inferno', 
+    #                         cmin=2, density=True, norm=LogNorm())
+    # cbar = fig.colorbar(im, ax=ax)
+    # cbar.ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    # ax.axvline(1, color='k', linestyle='dashed', label='Surf Zone Edge, $\gamma = 0.35$')
+    # # cbar.set_label('Probability Density [-]')
+    # # ax.set_xlabel('Normalized Jump Location, $x/L_{sz}$ [-]')
+    # # ax.set_ylabel('Normalized Jump Amplitude, $J_A/\lambda$ [-]')
+    # ax.set_xlim(0.25, 1.5)
+    # ax.set_ylim(0, 1)
+    # ax.legend()
+    # ax.tick_params(axis='both', labelsize=16)
+    # plt.show()
+    # print(np.median(jump_df['normalized cross shore jump location [-]']))
+
+    # # Find inds where x/lz< 3
+    # inds = jump_df['normalized cross shore jump location [-]'] < 2
+    # neglect_inds = ~inds
+    # total_bad = sum(neglect_inds)/len(jump_df['normalized cross shore jump location [-]']) * 100
+    # print(f'percent of neglected inds = {total_bad} %')
+
+    bin_num = 6
+    x_norm_bin_avg, \
+    jump_amp_norm_bin_avg, \
+    _, jump_amp_norm_std_in_bin = binned_statistics(jump_df['normalized cross shore jump location [-]'], 
+                                                                    jump_df['normalized jump amplitude [-]'], 
+                                                                    bins=bin_num, statistic='mean')
+    
+    x_norm_bin_avg, \
+    jump_duration_norm_bin_avg, \
+    _, jump_duration_norm_std_in_bin = binned_statistics(jump_df['normalized cross shore jump location [-]'], 
+                                                                    jump_df['normalized jump time [-]'], 
+                                                                    bins=bin_num, statistic='mean')
+    
+    fig, ax = plt.subplots(figsize=(12,6))
+    ax.scatter(jump_df['normalized cross shore jump location [-]'], 
+               jump_df['normalized jump amplitude [-]'], color='gray', alpha=0.5, s=8)
+    ax.errorbar(x_norm_bin_avg, jump_amp_norm_bin_avg, jump_amp_norm_std_in_bin, fmt='o', linestyle='none', 
+            capsize=3, label='Mean $\pm$ 1 Standard Deviation', color='r', ms=10)
+    # ax.plot(np.linspace(0, 5), (slope * np.linspace(0,5)) + intercept, color='k', linestyle='dashed', label=f'Linear Fit, $J_s/c = {np.round(slope,3)}(d/H_s) + {np.round(intercept, 3)}$')
+    ax.set_xlabel('x/L_sz [-]')
+    ax.set_ylabel('J_A/$\lambda$ [-]')
+    # ax.axhline(np.mean(jump_df['normalized jump amplitude [-]']), color='k', label='Mean')
+    ax.axhline(np.median(jump_df['normalized jump amplitude [-]']), color='k', linestyle='dashed', label='Median')
+    # ax.axvline(1, color='k', linestyle='dotted', label='Surf Zone Edge')
+    # ax.set_xscale('log')
+    ax.legend(fontsize=20)
+    ax.tick_params(axis='both', labelsize=20)
+    # ax.set_xticks([0.3, 0.4, 0.6, 1, 2])
+    # ax.get_xaxis().set_major_formatter(ScalarFormatter())
+
+    fig, ax = plt.subplots(figsize=(12,6))
+    ax.scatter(jump_df['normalized cross shore jump location [-]'], 
+               jump_df['normalized jump time [-]'], color='gray', alpha=0.5, s=8)
+    ax.errorbar(x_norm_bin_avg, jump_duration_norm_bin_avg, jump_duration_norm_std_in_bin, fmt='o', linestyle='none', 
+            capsize=3, label='Mean $\pm$ 1 Standard Deviation', color='r', ms=10)
+    # ax.plot(np.linspace(0, 5), (slope * np.linspace(0,5)) + intercept, color='k', linestyle='dashed', label=f'Linear Fit, $J_s/c = {np.round(slope,3)}(d/H_s) + {np.round(intercept, 3)}$')
+    ax.set_xlabel('x/L_sz [-]')
+    ax.set_ylabel('J_D/$T_m$ [-]')
+    ax.axhline(np.median(jump_df['normalized jump time [-]']), color='k', linestyle='dashed', label='Median')
+    # ax.axvline(1, color='k', linestyle='dotted', label='Surf Zone Edge')
+    ax.tick_params(axis='both', labelsize=20)
+    ax.legend(loc='upper right', fontsize=16)
     plt.show()
-    print(np.median(jump_df['normalized cross shore jump location [-]']))
-    print(np.median())
+
+    # x_norm_bin_avg, \
+    # jump_duration_norm_bin_avg, \
+    # _, jump_duration_norm_std_in_bin = binned_statistics(jump_df['normalized cross shore jump location [-]'][inds], 
+    #                                                                 jump_df['normalized jump time [-]'][inds], 
+    #                                                                 bins=bin_num, statistic='mean')
+    # # Fit a curve to the jump speed data
+    # # slope, intercept, r, p, se = stats.linregress(depth_bin_avg, jump_speed_norm_bin_avg)
+    
+    # fig, ax = plt.subplots(figsize=(10,10))
+    # ax.scatter(jump_df['normalized cross shore jump location [-]'][inds], 
+    #            jump_df['normalized jump time [-]'][inds], color='gray', alpha=0.5, s=8)
+    # ax.errorbar(x_norm_bin_avg, jump_duration_norm_bin_avg, jump_duration_norm_std_in_bin, fmt='o', linestyle='none', 
+    #         capsize=3, label='Mean $\pm$ 1 Standard Deviation', color='r', ms=10)
+    # # ax.plot(np.linspace(0, 5), (slope * np.linspace(0,5)) + intercept, color='k', linestyle='dashed', label=f'Linear Fit, $J_s/c = {np.round(slope,3)}(d/H_s) + {np.round(intercept, 3)}$')
+    # ax.set_xlabel('x/L_sz [-]')
+    # ax.set_ylabel('J_D/$T_m$ [-]')
+    # # ax.axhline(np.mean(jump_df['normalized jump amplitude [-]'][inds]), color='k', label='Mean')
+    # # ax.axhline(np.median(jump_df['normalized jump amplitude [-]'][inds]), color='k', linestyle='dashed', label='median')
+    # ax.axvline(1, color='k', linestyle='dotted', label='Surf Zone Edge')
+    # ax.tick_params(axis='both', labelsize=20)
+    # ax.legend(loc='upper right', fontsize=16)
+    # plt.show()
 
     # # Boxplots of cross shore location and normalized jump amplitude
     # ax1, ax2, counts, bin_centers = create_vertical_boxplots(jump_df['normalized cross shore jump location [-]'], jump_df['normalized jump amplitude [-]'], bins=10,
@@ -305,6 +624,27 @@ def main():
     # # ax1.legend()
     # plt.show()
     
+    # Frequency
+    fig, ax = plt.subplots()
+    ax.scatter(jump_df['Offshore Tm [s]'], jump_df['jump amplitude [m]'])
+    ax.set_xlabel('Mean Wave Period [s]')
+    ax.set_ylabel('Jump Amplitude [m]')
+    plt.show()
+
+    # Breaker Type
+    fig, ax = plt.subplots()
+    ax.scatter(jump_df['breaking iribarren_number [-]'], jump_df['jump amplitude [m]'])
+    ax.set_xlabel('Iribarren Number [-]')
+    ax.set_ylabel('Jump Amplitude [m]')
+    plt.show()
+
+    # Wave Steepness
+    fig, ax = plt.subplots()
+    ax.scatter(jump_df['Offshore Hs [m]']/jump_df['Offshore Tm [s]'], jump_df['jump amplitude [m]'])
+    ax.set_xlabel('Wave Steepness, Hs/L')
+    ax.set_ylabel('Jump Amplitude [m]')
+    plt.show()
+
     return
 
 if __name__ == "__main__":

@@ -175,7 +175,7 @@ def nan_helper(y):
 
     return np.isnan(y), lambda z: z.nonzero()[0]
 
-def main(speed_threshold=0.5, window_size=36, plot_jumps=True):
+def main(speed_threshold=1, window_size=36, plot_jumps=False):
     # Set the working directory
     os.chdir('/Users/ejrainville/projects/surfing-transport/')
 
@@ -206,6 +206,8 @@ def main(speed_threshold=0.5, window_size=36, plot_jumps=True):
     jump_speed_mean_all_missions = []
     jump_speed_median_all_missions = []
     jump_speed_max_all_missions = []
+    jump_speed_max_total_mag_all_missions = [] 
+    jump_speed_bulk_total_mag_all_missions = []
     mission_num_all_missions = []
     trajectory_num_all_missions = []
     mission_hs_all_missions = []
@@ -216,6 +218,9 @@ def main(speed_threshold=0.5, window_size=36, plot_jumps=True):
 
     progress_counter = 0
     event_num = 0
+
+    # Count the bad events, i.e. speed > 16 (double max expected)
+    bad_event_count = 0
 
     for mission_nc in mission_list:
         # print progress on terminal 
@@ -248,6 +253,7 @@ def main(speed_threshold=0.5, window_size=36, plot_jumps=True):
         period = mission_df[mission_df['mission number'] == mission_num]['Tm [s] (8marray)'].values[0]
         hs = mission_df[mission_df['mission number'] == mission_num]['Hs [m] (8marray)'].values[0]
         breaking_iribarren = mission_df[mission_df['mission number'] == mission_num]['breaking iribarren'].values[0]
+        x_sz = mission_df[mission_df['mission number'] == mission_num]['surf zone edge [m]'].values[0]
 
         # Initialize values 
         breaking_iribarren_each_mission = []
@@ -267,17 +273,27 @@ def main(speed_threshold=0.5, window_size=36, plot_jumps=True):
         jump_speed_mean_each_mission = []
         jump_speed_median_each_mission = []
         jump_speed_max_each_mission = []
+        jump_speed_max_total_mag = []
+        jump_speed_bulk_total_mag_each_mission = []
         nrmse_each_mission = []
 
         for trajectory_num in np.arange(number_of_trajectories):
             # Compute distance along the track 
             x = np.ma.filled(x_locations[trajectory_num,:], np.NaN)
+            y = np.ma.filled(y_locations[trajectory_num,:], np.NaN)
 
             # Filter the cross shore time series with window mean
             x_filtered = window_mean(x, window_size)
+            y_filtered = window_mean(y, window_size)
 
             # Compute Cross Shore Velocity from Cross Shore Position
             instantaneous_x_vel = np.gradient(x_filtered, delta_t)
+            instantaneous_y_vel = np.gradient(y_filtered, delta_t)
+
+            # No filter on velocity
+            instantaneous_x_vel_nofilter = np.gradient(x, delta_t)
+            instantaneous_y_vel_nofilter = np.gradient(y, delta_t)
+            instantaneous_total_vel_nofilter = np.sqrt(instantaneous_x_vel_nofilter**2 + instantaneous_y_vel_nofilter**2)
 
             # Depth Along Trajectory
             trajectory_bathy = bathy_along_track(bathy_file='./data/FRF_geomorphology_DEMs_surveyDEM_20211021.nc', 
@@ -292,55 +308,76 @@ def main(speed_threshold=0.5, window_size=36, plot_jumps=True):
             # Find peaks in velocity based on high speed threshold
             distance_between_peaks = int(8*(1/delta_t)) # 8 seconds between points
             jump_threshold = phase_speed_along_track * speed_threshold
-            peak_vel_indices = signal.find_peaks(-instantaneous_x_vel, height=jump_threshold, distance=distance_between_peaks)[0] # negative so that peaks are positive values
+            # peak_vel_indices = signal.find_peaks(-instantaneous_x_vel, height=jump_threshold, distance=distance_between_peaks)[0] # negative so that peaks are positive values
+            peak_vel_indices = signal.find_peaks(instantaneous_total_vel_nofilter, height=jump_threshold, distance=distance_between_peaks)[0] 
 
             # Pick out the start and end points by fitting a gaussian to the data and defining the FWTM of gaussian as the width
             num_events = peak_vel_indices.size
             window = int((500 / np.sqrt(9.8 * 5) * 12)//2) # Max that a buoy could surf, 500 meters is conservative surf zone width at a linear 
-                                                           # phase speed of approximately 5 m, this is 71 seconds or 852 points
+                                                           # phase speed of approximately 5 m/s, this is 71 seconds or 852 points
             for n in range(num_events):
-                time_values_in_window = np.arange(max(0, peak_vel_indices[n] - window), min(instantaneous_x_vel.size, peak_vel_indices[n] + window + 1))
-                speed_values_in_window = instantaneous_x_vel[max(0, peak_vel_indices[n] - window):min(instantaneous_x_vel.size, peak_vel_indices[n] + window + 1)] 
+                # time_values_in_window = np.arange(max(0, peak_vel_indices[n] - window), min(instantaneous_x_vel.size, peak_vel_indices[n] + window + 1))
+                # speed_values_in_window = instantaneous_x_vel[max(0, peak_vel_indices[n] - window):min(instantaneous_x_vel.size, peak_vel_indices[n] + window + 1)] 
+                time_values_in_window = np.arange(max(0, peak_vel_indices[n] - window), min(instantaneous_total_vel_nofilter.size, peak_vel_indices[n] + window + 1))
+                speed_values_in_window = instantaneous_total_vel_nofilter[max(0, peak_vel_indices[n] - window):min(instantaneous_total_vel_nofilter.size, peak_vel_indices[n] + window + 1)] 
 
                 # Fill NaN Values with linear interpolation to fit for the gaussian
                 nans, _ = nan_helper(speed_values_in_window)
                 speed_values_in_window[nans]= np.interp(time_values_in_window[nans], time_values_in_window[~nans], speed_values_in_window[~nans])
 
                 # Initial guess for the parameters
-                initial_guess = [instantaneous_x_vel[peak_vel_indices[n]], peak_vel_indices[n], 1.0, 0.1]
+                # initial_guess = [instantaneous_x_vel[peak_vel_indices[n]], peak_vel_indices[n], 1.0, 0.1]
+                initial_guess = [instantaneous_total_vel_nofilter[peak_vel_indices[n]], peak_vel_indices[n], 1.0, 0.1]
 
                 # Fit the Data in the window to a guassian function
                 try:
-                    popt, _ = curve_fit(gaussian, time_values_in_window, speed_values_in_window, p0=initial_guess, nan_policy='omit') # negative sign is to flip the jump so that it ifits a postive gaussian
+                    popt, _ = curve_fit(gaussian, time_values_in_window, speed_values_in_window, p0=initial_guess, nan_policy='omit') # negative sign is to flip the jump so that it fits a postive gaussian
                     amplitude, gaussian_center_index, stddev, offset = popt
                     fit_gaussian = gaussian(time_values_in_window, amplitude, gaussian_center_index, stddev, offset)
                     nrmse = np.sqrt(np.nanmean((fit_gaussian - speed_values_in_window)**2) / np.nanvar(speed_values_in_window))
                     ten_percent_max = ((np.min(fit_gaussian) - offset) * 0.1) + offset # minimum since the jumps are negative
                     width = np.abs(4.3 * stddev) # This is the "Full Width at Tenth of Maximum" (FWTM) value for a gaussian in indices
                     start_point = max(0, int(int(gaussian_center_index) - width//2)) # Makes sure a jump can't start before index 0
-                    end_point = min(instantaneous_x_vel.size-1, int(int(gaussian_center_index) + width//2)) # Makes sure a jump end point isn't longer than the data record
+                    # end_point = min(instantaneous_x_vel.size-1, int(int(gaussian_center_index) + width//2)) # Makes sure a jump end point isn't longer than the data record
+                    end_point = min(instantaneous_total_vel_nofilter.size-1, int(int(gaussian_center_index) + width//2)) # Makes sure a jump end point isn't longer than the data record
 
                     # Compute jump metrics from each picked out event
-                    jump_amp = np.abs(x[end_point] - x[start_point])
+                    jump_amp = np.sqrt(np.abs(x[end_point] - x[start_point])**2 + 
+                                        np.abs(y[end_point] - y[start_point])**2)
                     jump_time = (end_point - start_point) * delta_t
                     jump_speed_bulk = jump_amp/jump_time
 
-                    # Skip is the jump time is zero or amplitude is nan/inf
-                    if (jump_time < 0.5) or (jump_amp == np.NaN) or (jump_speed_bulk == np.NaN):
-                        continue
+                    # jump bulk speed total mag - these are the same now but leaving the first for legacy in the code
+                    jump_speed_bulk_total_mag = jump_amp/jump_time
+                    
+                    # jump_speed_max_total_mag_indiv = np.sqrt(np.nanmax(np.abs(instantaneous_x_vel_nofilter[start_point:end_point]))**2 + \
+                    #                                             np.nanmax(np.abs(instantaneous_y_vel_nofilter[start_point:end_point]))**2)
+                    jump_speed_max_total_mag_indiv = np.nanmax(instantaneous_total_vel_nofilter[start_point:end_point])
 
-                    jump_depth = np.abs(trajectory_depth[start_point])
+                    # Compute jump depths and phase speeds
+                    # jump_depth = np.abs(trajectory_depth[start_point])
+                    jump_depth = np.abs(trajectory_depth[peak_vel_indices[n]])
                     c = np.sqrt(9.8 * jump_depth)
                     fraction_nan = np.abs(np.count_nonzero(np.isnan(x[start_point:end_point]))/(end_point-start_point))
-                    jump_size = (end_point-start_point)
 
-                    if (jump_amp > 0) and (jump_time > 0) and (fraction_nan < 0.2) and (jump_size > 2) and (jump_speed_bulk < 20) and (jump_speed_bulk != np.NaN):
+                    # Skip is the jump time is zero or amplitude is nan/inf
+                    if (jump_time < 0.5) or (np.isnan(jump_amp)) \
+                    or (jump_speed_max_total_mag_indiv > 16) \
+                    or (fraction_nan > 0.2):
+                        
+                        bad_event_count += 1
+                        continue
+                        
+                    else:
                         # Save jump speeds values
                         jump_speed_bulk_each_mission.append(jump_speed_bulk)
-                        jump_speed_mean_each_mission.append(np.abs(np.nanmean(instantaneous_x_vel[start_point:end_point])))
-                        jump_speed_median_each_mission.append(np.abs(np.nanmedian(instantaneous_x_vel[start_point:end_point])))
+                        # jump_speed_mean_each_mission.append(np.sqrt(np.nanmean(instantaneous_x_vel_nofilter[start_point:end_point])**2 + np.nanmean(instantaneous_y_vel_nofilter[start_point:end_point])**2))
+                        jump_speed_mean_each_mission.append(np.nanmean(instantaneous_total_vel_nofilter[start_point:end_point]))
+                        jump_speed_median_each_mission.append(np.sqrt(np.nanmedian(instantaneous_x_vel_nofilter[start_point:end_point])**2 + np.nanmedian(instantaneous_y_vel_nofilter[start_point:end_point])**2))
                         jump_speed_max_each_mission.append(np.nanmax(np.abs(instantaneous_x_vel[start_point:end_point])))
-                        
+                        jump_speed_max_total_mag.append(jump_speed_max_total_mag_indiv)
+                        jump_speed_bulk_total_mag_each_mission.append(jump_speed_bulk_total_mag)
+
                         # Jump depth metric
                         jump_amps_each_mission.append(jump_amp)
                         jump_depth_each_mission.append(jump_depth)
@@ -351,13 +388,18 @@ def main(speed_threshold=0.5, window_size=36, plot_jumps=True):
                         jump_seconds_each_mission_normalized_period.append(jump_time/period)
                         mission_number_for_event.append(mission_num)
                         trajectory_number_for_event.append(trajectory_num)
-                        jump_x_location_each_mission_normalized.append(x[peak_vel_indices[n]]/(L_sz))
+                        # jump_x_location_each_mission_normalized.append(x[peak_vel_indices[n]]/(L_sz))
+                        jump_x_location_each_mission_normalized.append(x[peak_vel_indices[n]]/(x_sz)) #this is changed so that a value of 1 always occurs at the surf zone edge for normalization
                         breaking_iribarren_each_mission.append(breaking_iribarren)
                         mission_num_each_jump.append(mission_num)
                         trajectory_num_each_jump.append(trajectory_num)
                         mission_hs_each_jump.append(hs)
                         mission_tm_each_jump.append(period)
                         nrmse_each_mission.append(nrmse)
+
+                        # Increase the event number index
+                        event_number_all_missions.append(event_num)
+                        event_num += 1
 
                         if plot_jumps is True:
                             # Plot the jump event and save to the jump events directory
@@ -396,10 +438,6 @@ def main(speed_threshold=0.5, window_size=36, plot_jumps=True):
                             fig.savefig(f'./figures/jump-events/good_events/mission {mission_num} - trajectory {trajectory_num} - jump {event_num}.png')
                             plt.close()
 
-                        # Increase the event number index
-                        event_number_all_missions.append(event_num)
-                        event_num += 1
-
                 except Exception as e: 
                     print(e)
                     print(e.__traceback__.tb_lineno)
@@ -421,6 +459,8 @@ def main(speed_threshold=0.5, window_size=36, plot_jumps=True):
         jump_speed_mean_all_missions.append(jump_speed_mean_each_mission)
         jump_speed_median_all_missions.append(jump_speed_median_each_mission)
         jump_speed_max_all_missions.append(jump_speed_max_each_mission)
+        jump_speed_max_total_mag_all_missions.append(jump_speed_max_total_mag)
+        jump_speed_bulk_total_mag_all_missions.append(jump_speed_bulk_total_mag_each_mission)
 
         mission_num_all_missions.append(mission_num_each_jump)
         trajectory_num_all_missions.append(trajectory_num_each_jump)
@@ -445,6 +485,8 @@ def main(speed_threshold=0.5, window_size=36, plot_jumps=True):
     jump_speed_mean_all_missions_flat = np.ma.concatenate(jump_speed_mean_all_missions).flatten()
     jump_speed_median_all_missions_flat = np.ma.concatenate(jump_speed_median_all_missions).flatten()
     jump_speed_max_all_missions_flat = np.ma.concatenate(jump_speed_max_all_missions).flatten()
+    jump_speed_max_total_mag_all_missions_flat = np.ma.concatenate(jump_speed_max_total_mag_all_missions).flatten()
+    jump_speed_bulk_total_mag_all_missions_flat = np.ma.concatenate(jump_speed_bulk_total_mag_all_missions).flatten()
 
     mission_num_all_missions_flat = np.ma.concatenate(mission_num_all_missions).flatten()
     trajectory_num_all_missions_flat = np.ma.concatenate(trajectory_num_all_missions).flatten()
@@ -470,8 +512,15 @@ def main(speed_threshold=0.5, window_size=36, plot_jumps=True):
     jump_df['mean jump speed [m/s]'] = jump_speed_mean_all_missions_flat
     jump_df['median jump speed [m/s]'] = jump_speed_median_all_missions_flat
     jump_df['max jump speed [m/s]'] = jump_speed_max_all_missions_flat
+    jump_df['jump speed max total mag [m/s]'] = jump_speed_max_total_mag_all_missions_flat
+    jump_df['jump speed bulk total mag [m/s]'] = jump_speed_bulk_total_mag_all_missions_flat
     jump_df['nrmse'] = nrmse_all_missions_flat
     jump_df.to_csv(f'./data/jump_df_threshold{speed_threshold}.csv')
+
+    # Print the total number of bad events and percent out of total events
+    print(f'total bad events = {bad_event_count}')
+    print(f'total events detected = {event_num + bad_event_count}')
+    print(f'percent bad events = {np.round((bad_event_count)/(event_num +bad_event_count)* 100, 3)}%')
 
     return
 

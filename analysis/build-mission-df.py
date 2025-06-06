@@ -84,10 +84,16 @@ def main():
     mean_wave_dir_frf_8marray_all = []
     mean_wave_dir_frf_mathconv_8marray_all = []
     mean_wavelength_8marray_all = []
+    dir_spread_8marray_all = []
 
     # Wave Data from the 6 m awac
+    hs_6marray_all = []
+    mean_wave_dir_6marray_all = []
+    aveN_6marray_all = []
 
     # Current Data from the 4.5 m awac
+    hs_4p5marray_all = []
+    mean_wave_dir_4p5marray_all = []
     
 
     # Computed value from the 8m array
@@ -108,7 +114,8 @@ def main():
 
     # Define file paths to access the data
     array_8m_waves_file = './data/FRF-ocean_waves_8m-array_202110.nc'
-    awac_4p5m_current_file = './data/FRF-ocean_currents_awac-4.5m_202110.nc'
+    awac_6m_waves_file = './data/FRF-ocean_waves_awac-6m_202110.nc'
+    awac_4p5m_waves_file = './data/FRF-ocean_waves_awac-4.5m_202110.nc'
     wind_file = './data/FRF-met_wind_derived_202110.nc'    
     bathy_file = './data/FRF_geomorphology_DEMs_surveyDEM_20211021.nc'
     waterlevel_file = './data/FRF-ocean_waterlevel_eopNoaaTide_202110.nc'
@@ -146,6 +153,20 @@ def main():
         mean_wave_dir_frf_mathconv_8marray_all.append((71.8 - mean_wave_dir) + 180)
         mean_wavelength_8marray = wavelength(tm_8marray, 8)
         mean_wavelength_8marray_all.append(mean_wavelength_8marray )
+        dir_spread = find_closest_value_in_file(mission_time, array_8m_waves_file, 'directionalPeakSpread')
+        dir_spread_8marray_all.append(dir_spread)
+
+        # 6 m array awac
+        hs_6marray_all.append(find_closest_value_in_file(mission_time, awac_6m_waves_file, 'waveHs'))
+        mean_wave_dir_6marray_all.append(find_closest_value_in_file(mission_time, awac_6m_waves_file, 'waveMeanDirection'))
+
+        'FRF-ocean_currents_awac-4.5m_202110.nc'
+
+
+        # 4.5 m awac
+        hs_4p5marray_all.append(find_closest_value_in_file(mission_time, awac_4p5m_waves_file, 'waveHs'))
+        mean_wave_dir_4p5marray_all.append(find_closest_value_in_file(mission_time, awac_4p5m_waves_file, 'waveMeanDirection'))
+
 
         # Compute Values from the 8m array
         stokes_drift = compute_bulk_stokes_drift(hs_8marray, tm_8marray)
@@ -196,6 +217,7 @@ def main():
     mission_df['Mean Dir FRF [deg] (8marray)'] = mean_wave_dir_frf_8marray_all
     mission_df['Mean Dir FRF Math conv (8marray)'] = mean_wave_dir_frf_mathconv_8marray_all
     mission_df['Mean Wavelength [m] (8marray)'] = mean_wavelength_8marray_all
+    mission_df['Wave Directional Spread [deg (8marray)]'] = dir_spread_8marray_all
 
     # Wind Data
     mission_df['wind speed [m/s]'] = wind_spd_all

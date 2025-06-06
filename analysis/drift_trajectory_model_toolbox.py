@@ -137,6 +137,10 @@ def compute_fraction_of_breaking_profiles(gamma, Hs_profile, depth_vals):
     qb = (Hs_profile/ (gamma * depth_vals)) ** n
     return qb
 
+def compute_probability_of_surfing(x_vals, k, x_0, L_sz):
+    # Computes the probability of surfing based on the empirical curve fit from the data
+    return (1 / (1 + np.exp(-k*((x_vals/L_sz)-x_0))))
+
 def compute_error_metrics(buoy_final_location_x, buoy_final_location_y, true_track_time, modeled_track, surf_zone_width):
 
     # Check if the modeled trajectory made it to the same cross shore location as the true track

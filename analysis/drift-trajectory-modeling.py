@@ -152,7 +152,7 @@ def simulate_track_wind_and_waves(mission_num, init_x_loc, init_y_loc, buoy_fina
 def simulate_track_wind_and_waves_and_surfing(mission_num, init_x_loc, init_y_loc, buoy_final_location, wind_sensitivity, 
                                             wind_speed, wind_dir_FRF_mathconv, stokes_drift, wave_dir_FRF_mathconv, 
                                             Hs, Tm, x_profile_coords, y_profile_coords, depth_profile, bathy, dhdx, surf_zone_edge,
-                                            delta_t, max_time_steps, gamma, c_d, g, x_beach):
+                                            delta_t, max_time_steps, gamma, c_d, g, x_beach, surf_zone_width):
     # Wind and Waves Model
     x_location = [init_x_loc] 
     y_location = [init_y_loc]
@@ -173,6 +173,7 @@ def simulate_track_wind_and_waves_and_surfing(mission_num, init_x_loc, init_y_lo
                                                                    theta, c_d, alpha, mission_num)
     alongshore, crossshore = tools.create_waves_along_and_crossshore_current_profiles(theta, u_s, along_shore_current)
     fraction_of_breaking_profile = tools.compute_fraction_of_breaking_profiles(gamma, Hs_profile, depth_profile)
+    probability_of_surfing_profile =tools.compute_probability_of_surfing(x_profile_coords, -11.13, 0.54, surf_zone_edge)
 
     # Bouy Headed Onshore
     if x_location[0] > buoy_final_location:
@@ -192,20 +193,21 @@ def simulate_track_wind_and_waves_and_surfing(mission_num, init_x_loc, init_y_lo
 
              # Check if you surf on the next time step
             # # ----- Surfing -------
-            fraction_of_breaking = np.interp(x_location[-1], x_profile_coords, fraction_of_breaking_profile)
-            surf_time = 0.69 * Tm # based on the dimesionless values of jump time
+            probability_of_surfing = np.interp(x_location[-1], x_profile_coords, probability_of_surfing_profile)
+            # surf_time = 0.69 * Tm # based on the dimesionless values of jump time
+            surf_time = random.uniform(0.026 * Tm, 1.33 * Tm) # based on the dimesionless values of jump time
             surf_time_time_steps = surf_time // delta_t
             if x_location[-1] < x_br and wait_until_next_jump == 0:
                 # Check if you surf
                 catch_wave_check = random.uniform(0, 1)
-                if catch_wave_check < fraction_of_breaking:
+                if catch_wave_check < probability_of_surfing:
                     surfing = True
 
                     # Find the local depth and phase speed to update the trajectory with 
                     depth = interpolate.interpn(points=(x_profile_coords, y_profile_coords), 
                                                 values=np.transpose(-bathy), xi=[x_location[-1], y_location[-1]], 
                                                 bounds_error=False, fill_value=None)[0]
-                    surf_speed = 0.72 * np.sqrt(g * np.abs(depth))
+                    surf_speed = 0.82 * np.sqrt(g * np.abs(depth))
                     wait_until_next_jump = Tm // delta_t
                 else: 
                     wait_until_next_jump = Tm // delta_t
@@ -252,20 +254,21 @@ def simulate_track_wind_and_waves_and_surfing(mission_num, init_x_loc, init_y_lo
 
             # Check if you surf on the next time step
             # # ----- Surfing -------
-            fraction_of_breaking = np.interp(x_location[-1], x_profile_coords, fraction_of_breaking_profile)
-            surf_time = 0.69 * Tm # based on the dimesionless values of jump time
+            probability_of_surfing = np.interp(x_location[-1], x_profile_coords, probability_of_surfing_profile)
+            # surf_time = 0.69 * Tm # based on the dimesionless values of jump time
+            surf_time = random.uniform(0.026 * Tm, 1.33 * Tm) # based on the dimesionless values of jump time
             surf_time_time_steps = surf_time // delta_t
             if x_location[-1] <  x_br and wait_until_next_jump == 0:
                 # Check if you surf
                 catch_wave_check = random.uniform(0, 1)
-                if catch_wave_check < fraction_of_breaking:
+                if catch_wave_check < probability_of_surfing:
                     surfing = True
 
                     # Find the local depth and phase speed to update the trajectory with 
                     depth = interpolate.interpn(points=(x_profile_coords, y_profile_coords), 
                                                 values=np.transpose(-bathy), xi=[x_location[-1], y_location[-1]], 
                                                 bounds_error=False, fill_value=None)[0]
-                    surf_speed = 0.72 * np.sqrt(g * np.abs(depth))
+                    surf_speed = 0.82 * np.sqrt(g * np.abs(depth))
                     wait_until_next_jump = Tm // delta_t
                 else: 
                     wait_until_next_jump = Tm // delta_t
@@ -276,12 +279,15 @@ def simulate_track_wind_and_waves_and_surfing(mission_num, init_x_loc, init_y_lo
             if surfing is True:
                 n = 0 
                 while n < surf_time_time_steps and x_location[-1] < buoy_final_location and x_location[-1] > x_beach:
-                    # Udpate the y location to stay constant 
-                    y_location.append(y_location[-1])
+                    # # Find the wave angle at this time step and surf in the direction of the waves
+                    theta_at_timestep = np.interp(x_location[-1], x_profile_coords, theta)
 
-                    # Update the x location to travel towards the beach at phase speed
-                    # Note surf speed is negative since it is towards the beach 
-                    x_nextstep = x_location[-1] + -surf_speed * delta_t
+                    # Update the y location for surfing
+                    y_nextstep = y_location[-1] + surf_speed * (np.sin(np.deg2rad(theta_at_timestep + 180))) * delta_t
+                    y_location.append(y_nextstep)
+
+                    # Update the x location for surfing
+                    x_nextstep = x_location[-1] + surf_speed * (np.cos(np.deg2rad(theta_at_timestep + 180))) * delta_t
                     x_location.append(x_nextstep)
                     n += 1 
             
@@ -422,10 +428,16 @@ def figure_setup(fig, ax, bathy_file, stokes_drift, wave_dir_FRF_mathconv, wind_
     ax.plot([50,591],[510,510], linewidth=2, color='yellow', label='Pier')
 
     # Plot arrow for wind and wave direction - plot at end of pier
-    ax.arrow(700, 510, 50*wind_speed*np.cos(np.deg2rad(wind_dir_FRF_mathconv)), 50*wind_speed*np.sin(np.deg2rad(wind_dir_FRF_mathconv)), 
-            color='r', label='Wind Direction', width=10)
-    ax.arrow(700, 510, 50*stokes_drift*np.cos(np.deg2rad(wave_dir_FRF_mathconv)), 50*stokes_drift*np.sin(np.deg2rad(wave_dir_FRF_mathconv)), 
-            color='m', label='Wave Direction', width=10)
+    # ax.arrow(700, 510, 50*wind_speed*np.cos(np.deg2rad(wind_dir_FRF_mathconv)), 50*wind_speed*np.sin(np.deg2rad(wind_dir_FRF_mathconv)), 
+    #         color='r', label='Wind Direction', width=10)
+    # ax.arrow(700, 510, 50*stokes_drift*np.cos(np.deg2rad(wave_dir_FRF_mathconv)), 50*stokes_drift*np.sin(np.deg2rad(wave_dir_FRF_mathconv)), 
+    #         color='m', label='Wave Direction', width=10)
+    # wind_mag =  np.sqrt(np.cos(np.deg2rad(wind_dir_FRF_mathconv))**2 + np.sin(np.deg2rad(wind_dir_FRF_mathconv))**2)
+    # wave_mag = np.sqrt( np.cos(np.deg2rad(wave_dir_FRF_mathconv))**2 + np.sin(np.deg2rad(wave_dir_FRF_mathconv))**2)
+    # ax.quiver(700, 510, np.cos(np.deg2rad(wind_dir_FRF_mathconv))/wind_mag, np.sin(np.deg2rad(wind_dir_FRF_mathconv))/wind_mag, color='r', 
+    #       scale=0.01, scale_units='xy', headwidth=5, headlength=8, width=0.008, pivot='tail', label='Wind Direction')
+    # ax.quiver(700, 510, np.cos(np.deg2rad(wave_dir_FRF_mathconv))/wave_mag, np.sin(np.deg2rad(wave_dir_FRF_mathconv))/wave_mag, color='m', 
+    #       scale=0.01, scale_units='xy', headwidth=5, headlength=8, width=0.008, pivot='tail', label='Wave Direction')
     
     # Plot the Edge of the surf zone 
     ax.axvline(surf_zone_edge, color='k', linestyle='dashed', label='Surf Zone Edge')
@@ -436,6 +448,7 @@ def figure_setup(fig, ax, bathy_file, stokes_drift, wave_dir_FRF_mathconv, wind_
     # Figure Properties
     ax.set_ylabel('Along Shore Location, y [m]')
     ax.set_xlabel('Cross Shore Location, x [m]')
+    ax.axis('equal')
 
     return
 
@@ -457,6 +470,9 @@ def main():
     # Initialize error metric variables
     mission_num_all = []
     trajectory_num_all = []
+    true_trajectory_delta_y_all = []
+    true_trajectory_delta_x_all = []
+    true_trajectory_delta_t_all = []
     wind_only_correct_final_x_all = []
     wind_only_delta_y_all = []
     wind_only_delta_y_all_norm = []
@@ -570,18 +586,14 @@ def main():
                                                                                             stokes_drift, wave_dir_FRF_mathconv, 
                                                                                             Hs, Tm, x_profile_coords, y_profile_coords, 
                                                                                             depth_profile, bathy, dhdx, x_br,
-                                                                                            delta_t, max_time_steps, gamma, c_d, g, x_beach)
+                                                                                            delta_t, max_time_steps, gamma, c_d, g, x_beach, surf_zone_width)
                 
                 # Plot Trajectories
                 fig, ax = plt.subplots(figsize=(10,10))
                 
                 # Set up the figure
-                # xlims = (np.min([np.min(windonly_track[0]), np.min(wind_and_waves_track[0]), np.min(wind_and_waves_and_surf_track[0])]),
-                #          np.max([np.min(windonly_track[0]), np.max(wind_and_waves_track[0]), np.max(wind_and_waves_and_surf_track[0])]))
-                # ylims = (np.min([np.min(windonly_track[1]), np.min(wind_and_waves_track[1]), np.min(wind_and_waves_and_surf_track[1])]),
-                #          np.max([np.min(windonly_track[1]), np.max(wind_and_waves_track[1]), np.max(wind_and_waves_and_surf_track[1])]))
-                xlims = (0, 800)
-                ylims = (-1500, 1500)
+                xlims = (50, (2*np.mean(x_locations[trajectory_num, :]))+50)
+                ylims = (np.mean(y_locations[trajectory_num, :])-np.mean(x_locations[trajectory_num, :]), np.mean(y_locations[trajectory_num, :])+np.mean(x_locations[trajectory_num, :]))
                 figure_setup(fig, ax, bathy_file, stokes_drift, wave_dir_FRF_mathconv, 
                             wind_speed, wind_dir_FRF_mathconv, x_br, x_beach, xlims, ylims)
 
@@ -606,9 +618,21 @@ def main():
                                     trajectory=wind_and_waves_and_surf_track, 
                                     track_color='orange', label='Wind, Waves, and Surfing Model')
                 
+                # Plot the wind and wave direction vectors
+                x_location_quiver = np.max(x_locations[trajectory_num, :])+100
+                y_location_quiver = np.mean(y_locations[trajectory_num, :])
+                wind_mag =  np.sqrt(np.cos(np.deg2rad(wind_dir_FRF_mathconv))**2 + np.sin(np.deg2rad(wind_dir_FRF_mathconv))**2)
+                wave_mag = np.sqrt( np.cos(np.deg2rad(wave_dir_FRF_mathconv))**2 + np.sin(np.deg2rad(wave_dir_FRF_mathconv))**2)
+                ax.quiver(x_location_quiver, y_location_quiver, np.cos(np.deg2rad(wind_dir_FRF_mathconv))/wind_mag, np.sin(np.deg2rad(wind_dir_FRF_mathconv))/wind_mag, color='r', 
+                scale=0.01, scale_units='xy', headwidth=5, headlength=8, width=0.008, pivot='tail', label='Wind Direction')
+                ax.quiver(x_location_quiver, y_location_quiver, np.cos(np.deg2rad(wave_dir_FRF_mathconv))/wave_mag, np.sin(np.deg2rad(wave_dir_FRF_mathconv))/wave_mag, color='m', 
+                scale=0.01, scale_units='xy', headwidth=5, headlength=8, width=0.008, pivot='tail', label='Wave Direction')
+                
                 # Save the Figure
                 ax.legend(markerscale=2)
                 ax.tick_params(axis='both', labelsize=16)
+                ax.set_xlim(xlims)
+                ax.set_ylim(ylims)
                 plt.savefig(f'./figures/modeled-trajectories/Mission {mission_num} - Trajectory {trajectory_num}.png')
                 plt.close()
 
@@ -665,9 +689,15 @@ def main():
                 wind_and_waves_and_surf_delta_t_all.append(wind_and_waves_and_surf_delta_t)
                 wind_and_waves_and_surf_delta_t_all_norm.append(wind_and_waves_and_surf_delta_t_norm)
 
+                # True Trajectory Values
+                true_trajectory_delta_y_all.append(np.abs(buoy_final_location_y  - init_y_loc))
+                true_trajectory_delta_x_all.append(np.abs(buoy_final_location_x  - init_x_loc))
+                true_trajectory_delta_t_all.append(true_track_time)
+
             # Skip the trajectory if it does not beach
             else:
                 continue
+
         # Close the Dataset
         mission_dataset.close()
 
@@ -677,6 +707,9 @@ def main():
         # Save the error metrics to a dataframe
         model_df = pd.DataFrame(mission_num_all, columns=['mission number'])
         model_df['trajectory number'] = trajectory_num_all
+        model_df['true delta y [m]'] = true_trajectory_delta_y_all
+        model_df['true delta x [m]'] = true_trajectory_delta_x_all
+        model_df['true delta t [m]'] = true_trajectory_delta_t_all
 
         # Wind Only Metrics
         model_df['wind only correct final x'] = wind_only_correct_final_x_all
