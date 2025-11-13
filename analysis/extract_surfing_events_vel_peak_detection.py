@@ -177,7 +177,7 @@ def nan_helper(y):
 
 def main(speed_threshold=1, window_size=36, plot_jumps=False):
     # Set the working directory
-    os.chdir('/Users/ejrainville/projects/surfing-transport/')
+    # os.chdir('/Users/ejrainville/projects/surfing-transport/')
 
     # Load the mission Dataframe and plot against other characteristics
     mission_df = pd.read_csv('./data/mission_df.csv').sort_values(by=['mission number'])
@@ -238,7 +238,7 @@ def main(speed_threshold=1, window_size=36, plot_jumps=False):
         # Get the time values of the mission
         time = np.ma.filled(cftime.num2pydate(mission_dataset['time'],
                                     units=mission_dataset['time'].units,
-                                    calendar=mission_dataset['time'].calendar), np.NaN)
+                                    calendar=mission_dataset['time'].calendar), np.nan)
         
         delta_t = (time[1]-time[0]).total_seconds()
 
@@ -260,7 +260,7 @@ def main(speed_threshold=1, window_size=36, plot_jumps=False):
         jump_amps_each_mission = []
         jump_seconds_each_mission = []
         jump_depth_each_mission = []
-        jump_amps_each_mission_normalized = []
+        jump_amps_each_mission_normalized_lsz = []
         jump_amps_each_mission_normalized_wavelength = []
         jump_x_location_each_mission_normalized = []
         jump_seconds_each_mission_normalized_period = []
@@ -279,8 +279,8 @@ def main(speed_threshold=1, window_size=36, plot_jumps=False):
 
         for trajectory_num in np.arange(number_of_trajectories):
             # Compute distance along the track 
-            x = np.ma.filled(x_locations[trajectory_num,:], np.NaN)
-            y = np.ma.filled(y_locations[trajectory_num,:], np.NaN)
+            x = np.ma.filled(x_locations[trajectory_num,:], np.nan)
+            y = np.ma.filled(y_locations[trajectory_num,:], np.nan)
 
             # Filter the cross shore time series with window mean
             x_filtered = window_mean(x, window_size)
@@ -384,6 +384,7 @@ def main(speed_threshold=1, window_size=36, plot_jumps=False):
                         c_at_jump_depth.append(c)    
                                                                             
                         jump_amps_each_mission_normalized_wavelength.append(jump_amp/wavelength)
+                        jump_amps_each_mission_normalized_lsz.append(jump_amp/L_sz)
                         jump_seconds_each_mission.append(jump_time)
                         jump_seconds_each_mission_normalized_period.append(jump_time/period)
                         mission_number_for_event.append(mission_num)
@@ -448,7 +449,7 @@ def main(speed_threshold=1, window_size=36, plot_jumps=False):
         jump_amps_all_missions.append(jump_amps_each_mission)
         jump_seconds_all_missions.append(jump_seconds_each_mission)
         jump_depth_all_missions.append(jump_depth_each_mission)
-        jump_amps_all_missions_normalized_lsz.append(jump_amps_each_mission_normalized)
+        jump_amps_all_missions_normalized_lsz.append(jump_amps_each_mission_normalized_lsz)
         jump_amps_all_missions_normalized_wavelength.append(jump_amps_each_mission_normalized_wavelength)
         jump_x_location_normalized_all_missions.append(jump_x_location_each_mission_normalized)
         breaking_iribarren_all_missions.append(breaking_iribarren_each_mission)
@@ -475,6 +476,7 @@ def main(speed_threshold=1, window_size=36, plot_jumps=False):
     jump_amps_all_missions_flat = np.ma.concatenate(jump_amps_all_missions).flatten()
     jump_seconds_all_missions_flat = np.ma.concatenate(jump_seconds_all_missions).flatten()
     jump_depth_all_missions_flat = np.ma.concatenate(jump_depth_all_missions).flatten()
+    jump_amps_all_missions_normalized_lsz_flat = np.ma.concatenate(jump_amps_all_missions_normalized_lsz).flatten()
     jumps_amps_all_missions_normalized_wavelength_flat = np.ma.concatenate(jump_amps_all_missions_normalized_wavelength).flatten()
     jumps_x_location_normalized_all_mission_flat = np.ma.concatenate(jump_x_location_normalized_all_missions).flatten()
     breaking_iribarren_all_missions_flat = np.ma.concatenate(breaking_iribarren_all_missions).flatten()
@@ -502,6 +504,7 @@ def main(speed_threshold=1, window_size=36, plot_jumps=False):
     jump_df['jump time [s]'] = jump_seconds_all_missions_flat
     jump_df['jump depth [m]'] = jump_depth_all_missions_flat
     jump_df['normalized jump amplitude [-]'] = jumps_amps_all_missions_normalized_wavelength_flat
+    jump_df['normalized jump amplitude (LSZ) [-]'] = jump_amps_all_missions_normalized_lsz_flat
     jump_df['normalized jump time [-]'] = jump_seconds_all_mission_normalized_period_flat
     jump_df['normalized cross shore jump location [-]'] = jumps_x_location_normalized_all_mission_flat
     jump_df['breaking iribarren_number [-]'] = breaking_iribarren_all_missions_flat

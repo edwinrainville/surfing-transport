@@ -104,8 +104,8 @@ def binned_statistics(x, y, bins=10, statistic='median'):
     """
     
     # Validate the statistic parameter
-    if statistic not in ['mean', 'median', 'variance']:
-        raise ValueError("Statistic must be 'mean', 'median', or 'variance'.")
+    if statistic not in ['mean', 'median', 'variance', 'logmean', 'logstd']:
+        raise ValueError("Statistic must be 'mean', 'median', 'variance', 'logmean', or 'logstd'.")
 
     # Create bins
     bin_edges = np.linspace(np.min(x), np.max(x), bins + 1)
@@ -121,9 +121,14 @@ def binned_statistics(x, y, bins=10, statistic='median'):
         statistics = [np.nanmedian(y[binned_indices == i]) for i in range(1, bins + 1)]
     elif statistic == 'variance':
         statistics = [np.nanvar(y[binned_indices == i]) for i in range(1, bins + 1)]
-    
+    elif statistic == 'logmean':
+        statistics = [np.exp(np.nanmean(np.log(y[binned_indices == i]))) for i in range(1, bins + 1)]
+    elif statistic == 'logstd':
+        statistics = [np.exp(np.nanstd(np.log(y[binned_indices == i]))) for i in range(1, bins + 1)]
+
     # Compute std for each bin
     std_in_bin = [np.nanstd(y[binned_indices == i]) for i in range(1, bins + 1)]
+    # std_in_bin = [np.exp(np.nanstd(np.log(y[binned_indices == i]))) for i in range(1, bins + 1)]
 
     # Check Normal Distribution Goodness of Fit Test for each bin
     
@@ -171,6 +176,20 @@ def main():
     ax.axhline(np.median(jump_df['normalized jump amplitude [-]']), color='k', label=f'Median Jump Amplitude, {np.round(np.median(jump_df['normalized jump amplitude [-]']), 2)} Wavelengths')
     # ax.set_xlabel('Jump Duration, $J_D$ [s]')
     # ax.set_ylabel('Jump Amplitude, $J_A$ [m]')
+    ax.set_xlim(0, 4.2)
+    ax.set_ylim(0, 1.5)
+    ax.legend()
+    plt.show()
+
+     # 2d Histogram of the Normalized Jump Metrics - amplitude normalized by Xsz
+    fig, ax = plt.subplots()
+    _, _, _, im = ax.hist2d(jump_df['normalized jump time [-]'], jump_df['normalized jump amplitude (LSZ) [-]'], bins=(100, 100), cmap='inferno', cmin=0.25, density=True, norm=LogNorm())
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label('log(Probability Density) [-]')
+    ax.axvline(np.median(jump_df['normalized jump time [-]']), color='k', linestyle='dashed', label=f'Median Jump Duration, {np.round(np.median(jump_df['normalized jump time [-]']), 2)} Wave Periods')
+    ax.axhline(np.median(jump_df['normalized jump amplitude (LSZ) [-]']), color='k', label=f'Median Jump Amplitude, {np.round(np.median(jump_df['normalized jump amplitude (LSZ) [-]']), 2)} Surf Zone Width')
+    ax.set_xlabel('Jump Duration, $J_D/T_m$ [-]')
+    ax.set_ylabel('Jump Amplitude, $J_A/X_{sz}$ [-]')
     ax.set_xlim(0, 4.2)
     ax.set_ylim(0, 1.5)
     ax.legend()
@@ -481,23 +500,37 @@ def main():
     # total_bad = sum(neglect_inds)/len(jump_df['normalized cross shore jump location [-]']) * 100
     # print(f'percent of neglected inds = {total_bad} %')
 
+    # bin_num = 6
+    # x_norm_bin_avg, \
+    # jump_amp_norm_bin_avg, \
+    # _, jump_amp_norm_std_in_bin = binned_statistics(jump_df['normalized cross shore jump location [-]'], 
+    #                                                                 jump_df['normalized jump amplitude [-]'], 
+    #                                                                 bins=bin_num, statistic='mean')
+    
+    # x_norm_bin_avg, \
+    # jump_duration_norm_bin_avg, \
+    # _, jump_duration_norm_std_in_bin = binned_statistics(jump_df['normalized cross shore jump location [-]'], 
+    #                                                                 jump_df['normalized jump time [-]'], 
+    #                                                                 bins=bin_num, statistic='mean')
+    
     bin_num = 6
     x_norm_bin_avg, \
     jump_amp_norm_bin_avg, \
     _, jump_amp_norm_std_in_bin = binned_statistics(jump_df['normalized cross shore jump location [-]'], 
-                                                                    jump_df['normalized jump amplitude [-]'], 
+                                                                    np.log(jump_df['normalized jump amplitude [-]']), 
                                                                     bins=bin_num, statistic='mean')
     
     x_norm_bin_avg, \
     jump_duration_norm_bin_avg, \
     _, jump_duration_norm_std_in_bin = binned_statistics(jump_df['normalized cross shore jump location [-]'], 
-                                                                    jump_df['normalized jump time [-]'], 
+                                                                   np.log(jump_df['normalized jump time [-]']), 
                                                                     bins=bin_num, statistic='mean')
     
+
     fig, ax = plt.subplots(figsize=(12,6))
     ax.scatter(jump_df['normalized cross shore jump location [-]'], 
                jump_df['normalized jump amplitude [-]'], color='gray', alpha=0.5, s=8)
-    ax.errorbar(x_norm_bin_avg, jump_amp_norm_bin_avg, jump_amp_norm_std_in_bin, fmt='o', linestyle='none', 
+    ax.errorbar(x_norm_bin_avg, np.exp(jump_amp_norm_bin_avg), [np.exp(jump_amp_norm_bin_avg) - (np.exp(jump_amp_norm_bin_avg) / np.exp(jump_amp_norm_std_in_bin)), (np.exp(jump_amp_norm_bin_avg) * np.exp(jump_amp_norm_std_in_bin)) - np.exp(jump_amp_norm_bin_avg)], fmt='o', linestyle='none', 
             capsize=3, label='Mean $\pm$ 1 Standard Deviation', color='r', ms=10)
     # ax.plot(np.linspace(0, 5), (slope * np.linspace(0,5)) + intercept, color='k', linestyle='dashed', label=f'Linear Fit, $J_s/c = {np.round(slope,3)}(d/H_s) + {np.round(intercept, 3)}$')
     ax.set_xlabel('x/L_sz [-]')
@@ -505,16 +538,19 @@ def main():
     # ax.axhline(np.mean(jump_df['normalized jump amplitude [-]']), color='k', label='Mean')
     ax.axhline(np.median(jump_df['normalized jump amplitude [-]']), color='k', linestyle='dashed', label='Median')
     # ax.axvline(1, color='k', linestyle='dotted', label='Surf Zone Edge')
-    # ax.set_xscale('log')
+    ax.set_xscale('log')
+    ax.set_yscale('log')
     ax.legend(fontsize=20)
     ax.tick_params(axis='both', labelsize=20)
+    ax.set_xticks([0.3, 0.4, 0.6, 1, 2])
+    ax.get_xaxis().set_major_formatter(ScalarFormatter())
     # ax.set_xticks([0.3, 0.4, 0.6, 1, 2])
     # ax.get_xaxis().set_major_formatter(ScalarFormatter())
 
     fig, ax = plt.subplots(figsize=(12,6))
     ax.scatter(jump_df['normalized cross shore jump location [-]'], 
                jump_df['normalized jump time [-]'], color='gray', alpha=0.5, s=8)
-    ax.errorbar(x_norm_bin_avg, jump_duration_norm_bin_avg, jump_duration_norm_std_in_bin, fmt='o', linestyle='none', 
+    ax.errorbar(x_norm_bin_avg, np.exp(jump_duration_norm_bin_avg),  [np.exp(jump_duration_norm_bin_avg) - (np.exp(jump_duration_norm_bin_avg) / np.exp(jump_duration_norm_std_in_bin)), (np.exp(jump_duration_norm_bin_avg) * np.exp(jump_duration_norm_std_in_bin)) - np.exp(jump_duration_norm_bin_avg)] , fmt='o', linestyle='none', 
             capsize=3, label='Mean $\pm$ 1 Standard Deviation', color='r', ms=10)
     # ax.plot(np.linspace(0, 5), (slope * np.linspace(0,5)) + intercept, color='k', linestyle='dashed', label=f'Linear Fit, $J_s/c = {np.round(slope,3)}(d/H_s) + {np.round(intercept, 3)}$')
     ax.set_xlabel('x/L_sz [-]')
@@ -522,7 +558,12 @@ def main():
     ax.axhline(np.median(jump_df['normalized jump time [-]']), color='k', linestyle='dashed', label='Median')
     # ax.axvline(1, color='k', linestyle='dotted', label='Surf Zone Edge')
     ax.tick_params(axis='both', labelsize=20)
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.legend(fontsize=20)
     ax.legend(loc='upper right', fontsize=16)
+    ax.set_xticks([0.3, 0.4, 0.6, 1, 2])
+    ax.get_xaxis().set_major_formatter(ScalarFormatter())
     plt.show()
 
     # x_norm_bin_avg, \
